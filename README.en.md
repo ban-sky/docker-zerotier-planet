@@ -66,10 +66,10 @@ cd docker-zerotier-planet
 ./deploy.sh
 ```
 
-The script asks for the public address and ports, creates `data/`, builds the image
-if it is missing, starts the
-container and waits for its health check. It asks before replacing an existing
-container and never deletes the data directory.
+The script asks for the public address and ports, creates `data/`, builds the
+image if it is missing, starts the container and waits for its health check. It
+asks before replacing an existing container and never deletes the data
+directory.
 
 ### Option 2: Compose
 

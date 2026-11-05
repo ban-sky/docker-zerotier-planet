@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Security fixes are applied to the `main` branch and to the latest published
-image tag. Older tags are not maintained.
+Security fixes are applied to the `main` branch and to the latest release tag.
+Older tags are not maintained.
 
 ## Reporting a vulnerability
 
@@ -68,8 +68,8 @@ defaults.
   booleans. Shell scripts validate ports/addresses and quote variables.
 - **Supply chain.** ZeroTier is pinned to `1.16.2` and verified against its
   commit; ztncui is pinned to a commit; npm installs from a committed lockfile
-  with lifecycle scripts disabled; GitHub Actions build the image with
-  provenance and SBOM.
+  with lifecycle scripts disabled; the Dockerfile verifies the pinned commits and
+  `build.sh` builds multi-arch images locally with buildx.
 
 ### Deployment checklist
 
@@ -93,5 +93,5 @@ defaults.
 - The file server and UI share the host's network namespace in the default
   Compose setup. Use a reverse proxy if you need finer network separation.
 - Container images are built for `linux/amd64` and `linux/arm64` only.
-- The project cannot test real TUN/planet connectivity in CI; validate your
-  deployment with `zerotier-cli listpeers` and a test client.
+- Real TUN/planet connectivity cannot be validated in this build environment;
+  validate your deployment with `zerotier-cli listpeers` and a test client.
