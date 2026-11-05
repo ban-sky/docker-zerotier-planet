@@ -10,7 +10,7 @@ const usersController = require('../controllers/usersController');
 // A fixed PHC hash used to keep the timing of "unknown user" close to the
 // timing of a real password check. The password is irrelevant because the
 // result is discarded.
-const DUMMY_HASH = '$argon2i$v=19$m=4096,t=3,p=1$/VYxjWHBzbkuCEO6Hh0AUw$nJaTJtth57vCAyYvg+UbtnscilR0UcE02AfLOhERe3A';
+const DUMMY_HASH = '$argon2id$v=19$m=65536,t=3,p=1$wbq59GJdrmDhiQN7O4ASUA$kuVVAufv6VusWm3/dS4AiCkNR6RLzgAMOAn1/np6Co4';
 
 const hash_check = async function(user, password) {
   const users = await usersController.get_users();
