@@ -1,0 +1,105 @@
+#!/usr/bin/env node
+
+/**
+ * ztncui - ZeroTier network controller UI
+ * Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+ * Licensed under GPLv3 - see LICENSE for details.
+ *
+ * Hardened listener: plaintext HTTP is disabled by default (HTTP_PORT=0) and
+ * TLS uses an explicit certificate/key path instead of a cwd-relative one.
+ */
+
+const app = require('../app');
+const debug = require('debug')('ztncui:server');
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+
+function parsePort(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (!/^\d+$/.test(raw)) throw new Error(name + ' must be a number');
+  const port = parseInt(raw, 10);
+  if (port < 0 || port > 65535) throw new Error(name + ' must be between 0 and 65535');
+  return port;
+}
+
+const tlsEnabled = process.env.TLS_ENABLED === '1';
+const httpPort = parsePort('HTTP_PORT', tlsEnabled ? 0 : 3000);
+const httpsPort = tlsEnabled ? parsePort('HTTPS_PORT', 3443) : 0;
+const httpHost = process.env.HTTP_HOST || '127.0.0.1';
+const httpsHost = process.env.HTTPS_HOST || '0.0.0.0';
+const certPath = process.env.TLS_CERT || path.join(__dirname, '..', 'etc', 'tls', 'fullchain.pem');
+const keyPath = process.env.TLS_KEY || path.join(__dirname, '..', 'etc', 'tls', 'privkey.pem');
+
+if (httpPort === 0 && httpsPort === 0) {
+  console.error('FATAL: both HTTP_PORT and HTTPS_PORT are disabled');
+  process.exit(1);
+}
+
+const servers = [];
+
+if (httpPort > 0) {
+  const server = http.createServer(app);
+  server.on('error', (err) => onError(err, 'HTTP', httpPort));
+  server.listen(httpPort, httpHost, () => {
+    console.log('Listening for HTTP requests on ' + httpHost + ':' + httpPort);
+  });
+  servers.push(server);
+}
+
+if (httpsPort > 0) {
+  let options;
+  try {
+    options = {
+      cert: fs.readFileSync(certPath),
+      key: fs.readFileSync(keyPath),
+      minVersion: 'TLSv1.2'
+    };
+  } catch (err) {
+    console.error('FATAL: cannot read TLS certificate/key (' + certPath + ', ' + keyPath + '): ' + err.message);
+    process.exit(1);
+  }
+
+  const server = https.createServer(options, app);
+  server.on('error', (err) => onError(err, 'HTTPS', httpsPort));
+  server.listen(httpsPort, httpsHost, () => {
+    console.log('Listening for HTTPS requests on ' + httpsHost + ':' + httpsPort);
+  });
+  servers.push(server);
+}
+
+function onError(error, proto, port) {
+  if (error.syscall !== 'listen') throw error;
+  switch (error.code) {
+    case 'EACCES':
+      console.error(proto + ' port ' + port + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(proto + ' port ' + port + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+function shutdown(signal) {
+  console.log('Received ' + signal + ', shutting down');
+  let pending = servers.length;
+  if (pending === 0) process.exit(0);
+  for (const server of servers) {
+    server.close(() => {
+      pending -= 1;
+      if (pending === 0) process.exit(0);
+    });
+  }
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+debug('ztncui listening');

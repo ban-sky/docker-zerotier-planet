@@ -1,292 +1,259 @@
-# Docker ZeroTier Planet
+# docker-zerotier-planet (hardened)
 
-[简体中文](README.md) · [English](README.en.md)
+Run your own **ZeroTier planet** and **network controller (ztncui)** in Docker.
+This is a maintained fork of
+[xubiaolin/docker-zerotier-planet](https://github.com/xubiaolin/docker-zerotier-planet),
+upgraded to **ZeroTier One 1.16.2** with fixes for the security issues reported
+against the upstream project.
 
-Deploy your own ZeroTier Planet on a Linux server with Docker. The deployment also provides a web-based network management interface and a download service for `planet` and `moon` files. It is intended for users who want to manage their own ZeroTier root node and networks.
+> **License warning (important)**
+> Since ZeroTier 1.16 the controller lives in `nonfree/` and is covered by the
+> *ZeroTier SOURCE-AVAILABLE LICENSE*: **personal, non-commercial use only**
+> (plus student education/academia and a 30-day evaluation). This image is
+> therefore built with `ZT_NONFREE=1`. Companies, government/military,
+> non-profits/charities and paid services **must not** use the bundled
+> controller. See [NOTICE](NOTICE) and `/usr/share/licenses/zerotier/`.
 
-> **Before you start:** Clients must replace their `planet` file to use the self-hosted Planet. Running your own root node does not guarantee direct connections between devices, nor does it mean all application traffic will—or will not—pass through this server. The management interface uses **HTTP** by default; change the default password promptly after deployment.
+## Changes from upstream
 
-<a href="https://edgeone.ai/?from=github">
-  <img src="assets/edgeone-logo.png" alt="EdgeOne Logo" /> CDN acceleration and security protection for this project are sponsored by Tencent EdgeOne
-</a>
+### Security (the five findings in issue #215)
 
-## Advertisements
+| Finding | Fix |
+| --- | --- |
+| Hard-coded `admin/password` | A random 24-character password is generated on first boot into `config/admin-password` (0600). The UI forces a password change on first login and deletes the file afterwards |
+| Path traversal in the file server | Only `planet` and `*.moon` are served; the resolved `realpath` must stay inside `dist/`; symlink escapes, `..` and encoded traversal are rejected |
+| Download key in the URL query | `Authorization: Bearer` / `X-Api-Key` only by default; a 32-byte key persisted as 0600; the legacy `?key=` mode requires `ALLOW_QUERY_KEY=1` |
+| Unpinned dependencies | ZeroTier pinned to `1.16.2` with commit verification; ztncui pinned to a commit; npm uses the committed lockfile and `npm ci --omit=dev --ignore-scripts` |
+| Plaintext HTTP for UI and downloads | TLS by default (self-signed ECDSA P-256 with the server IP in the SAN), TLS 1.2+, HSTS; custom certificates can be mounted |
 
-- [One-click Rainyun container deployment—buy a server on Rainyun](https://app.rainyun.com/apps/rca/store/6215?ref=220429)
-- [MyHeadScale—5 devices free forever, unlimited traffic](https://hs.bj.markxu.vip/?from=github)
-- [Bandwagonhost—premium CN2 routes](https://bandwagonhost.com/aff.php?aff=82099)
+### Other upstream issues
 
-## Community and Support
+- **#213**: `attic/world` was removed in 1.16 and the old `mkworld` no longer builds. The tool was rewritten against `node/World.hpp` + `ECC` and verifies the signature it produces.
+- **#200**: port prompts in `deploy.sh` are no longer swallowed by command substitution, and ports are validated as `1-65535`.
+- **#180**: data directories are created before `docker run`, so podman works too.
+- **#196**: `/usr/sbin/zerotier-cli` and `zerotier-idtool` are available inside the image; the old `/bak` templates are gone.
+- **#208**: `activeBridge`/`auth` are parsed as strict booleans; the string `"false"` is no longer truthy.
+- **#185**: the default MemoryStore warning is replaced by a TTL-bounded store.
+- **#163**: the entrypoint waits for ZeroTier's own authtoken instead of generating one, avoiding controller API 401s.
+- **#216**: multi-arch build script and local Dockerfile; no dependency on the upstream Docker Hub image. Images can be pushed to GHCR by the operator.
+- **#157**: set `HTTPS_HOST=::` to listen on IPv6 as well (default `0.0.0.0`).
+- **#205**: only `linux/amd64` and `linux/arm64` are built; armv7 is not supported.
 
-- [Telegram group](https://t.me/+JduuWfhSEPdlNDk1)
-- QQ groups:
-  - 692635772
-  - 785620313
-  - 316239544
-  - 1027678459
-  - 651935808
+### Additional hardening
 
-If you find this project helpful, you can support it:
+- Services run as uid/gid 1000; the entrypoint only uses root briefly to fix volume ownership.
+- No `set -x`: authtoken, controller token and download keys never appear in logs.
+- ztncui: CSP, HSTS, SameSite/HttpOnly/Secure cookies, same-origin Origin/Referer checks, login throttling, open-redirect fix, prototype-chain username DoS fix, session fixation fix, and error pages without stack traces.
+- Native `argon2` replaced by pure-WASM `hash-wasm` (no node-gyp) with Argon2id (64 MiB).
+- Atomic 0600 password writes; admins can only change their own password; the last admin cannot be deleted.
+- Compose defaults to `read_only`, `no-new-privileges` and a `tmpfs` `/tmp`.
+- `SECURITY.md`, a disclosure process, dependency lockfiles and regression tests.
 
-<img src="assets/donate.png" width="180" alt="Donation QR code" />
+## Quick start
 
-WeChat official account:
+### Requirements
 
-<img src="assets/wx_qrcode_pub.jpg" width="180" alt="WeChat official account QR code" />
+- Docker 24+ / Docker Compose v2; `amd64` or `arm64`
+- A Linux host with a public IPv4 address (port forwarding if behind NAT)
+- Allow **UDP 9994**, **TCP 3443** (UI) and **TCP 3000** (planet download)
+- ~512 MiB RAM and 1 GiB disk
 
-## Contents
-
-- [Advertisements](#advertisements)
-- [Community and Support](#community-and-support)
-- [Quick Start](#quick-start): prepare a server, deploy the container, and create a network
-- [Connect Clients](#connect-clients): replace `planet` and join the network on each platform
-- [Operations and Security](#operations-and-security): backups, updates, removal, Compose, and HTTPS
-- [FAQ](#faq): connectivity, ports, IP changes, and more
-- [Project and Community](#project-and-community): roadmap, risk statement, acknowledgments, and references
-
-## Quick Start
-
-### 1. Prepare a Server
-
-Prepare a Linux server with a **public IPv4 address**, and install Docker and Git. The deployment script targets Linux; the image build script targets `linux/amd64` and `linux/arm64`. If you have not installed Docker, consult the [official Docker installation guide](https://docs.docker.com/engine/install/).
-
-Allow the ports you actually use through both the server firewall and your cloud provider's security group. You can change the default ports when the installer prompts you:
-
-| Default port | Protocol | Purpose |
-| --- | --- | --- |
-| `9994` | TCP, UDP | ZeroTier communication |
-| `3443` | TCP | Web management interface; **HTTP** by default, not HTTPS |
-| `3000` | TCP | `planet` / `moon` download service; expose it externally only if remote downloads are needed |
-
-> Avoid exposing the management interface or download endpoint to untrusted users. Treat download links and their keys as credentials.
-
-### 2. Run the Deployment Script
+### Option 1: script
 
 ```bash
-git clone https://github.com/xubiaolin/docker-zerotier-planet.git
+git clone https://github.com/ban-sky/docker-zerotier-planet.git
 cd docker-zerotier-planet
 ./deploy.sh
 ```
 
-Select **1. Install** and enter the ZeroTier, management interface, and file download ports. Then choose whether to detect your server's public IP automatically or enter it manually.
+The script asks for the public address and ports, creates `data/`, builds the image
+if it is missing, starts the
+container and waits for its health check. It asks before replacing an existing
+container and never deletes the data directory.
 
-The deployment script creates a container with `docker run`; this repository does not include a Compose configuration file.
-
-**Do not choose Install again on an existing deployment without a backup: it deletes `data/zerotier/` under the current project directory. Choose Update for an upgrade.** If the image cannot be pulled, check Docker's access to the image registry before replacing any existing Docker configuration on your server.
-
-Run the script from the project directory: its data paths are based on your current working directory.
-
-After deployment, check the container and its logs:
+### Option 2: Compose
 
 ```bash
-docker ps --filter name=myztplanet
-docker logs myztplanet
+git clone https://github.com/ban-sky/docker-zerotier-planet.git
+cd docker-zerotier-planet
+cat > .env <<'EOF'
+IP_ADDR4=203.0.113.10
+# IP_ADDR6=2001:db8::10
+EOF
+# build locally on first use
+docker compose up -d --build
 ```
 
-### 3. Create a Network and Download Files
-
-1. Open `http://<server-public-IP>:3443` (or the management port you selected) and sign in. **The default username is `admin` and the default password is `password`; change the password immediately after your first login.**
-2. On the **Networks** page, click **Add Network**, enter a name, and create the network. Record the generated **Network ID**. To assign virtual IP addresses automatically, configure a range under **Easy Setup** in the network settings.
-3. Obtain the `planet` file from the download URL printed by the script or from `./data/zerotier/dist/` on the server. Distribute it to clients that need to connect to this private Planet. The `moon` file is generated in the same directory; this deployment also configures the node itself as a moon, and other nodes may download the file as needed.
-
-![Management interface and network list](assets/ztncui.png)
-
-> **Back up the entire `data/zerotier/` directory.** In addition to downloadable client files, it contains node identities, signing keys, controller data, and management interface data. Do not commit this directory or download keys to a public repository.
-
-### What's Included
-
-| Component | Purpose |
-| --- | --- |
-| Planet | ZeroTier root node that helps clients discover the network; clients need the `planet` file generated by this project |
-| Moon | This deployment also configures the node as a moon and creates a `.moon` file in `dist` for other nodes to use as needed |
-| Controller / web management interface | Create networks, authorize members, and manage address assignments |
-| File download service | Provides access to generated files; keep the download key secure |
-
-ZeroTier attempts to connect nodes directly. Whether a direct connection succeeds still depends on both sides' networks, NAT, and firewalls. A self-hosted Planet does not replace end-to-end connectivity troubleshooting.
-
-## Connect Clients
-
-**General process:** Install ZeroTier on the client → back up the existing `planet` file (if any) → put the newly generated file in place → restart the ZeroTier service → join the Network ID you created → authorize the device in the management interface → check its assigned address and connection status.
-
-In the commands below, `0123456789abcdef` is only an **example Network ID**. Replace it with the ID of your own network. Installation paths may vary by distribution and client version; check the actual location on your device.
-
-### Windows
-
-1. Install the [ZeroTier One client](https://www.zerotier.com/download/). Back up any existing file, then put the generated `planet` file at `C:\ProgramData\ZeroTier\One\planet` (`ProgramData` is hidden by default).
-2. Restart **ZeroTier One** in Windows Services. In an administrator terminal where `zerotier-cli.bat` is available, join the network:
-
-   ```powershell
-   zerotier-cli.bat join 0123456789abcdef
-   zerotier-cli.bat peers
-   ```
-
-3. Find the device in the management interface, select **Authorized**, and confirm that it receives a virtual IP address. The `peers` output shows the connection status of the Planet and other nodes; **a DIRECT connection to the Planet does not mean every connection between devices is also direct**.
-
-![Windows Services](assets/restart_service.png)
-
-### Linux
-
-Back up any existing `planet` file and copy the new file into the ZeroTier data directory (usually `/var/lib/zerotier-one/planet`). Restart the service and join the network:
+### First login
 
 ```bash
-sudo cp planet /var/lib/zerotier-one/planet
-sudo systemctl restart zerotier-one
-sudo zerotier-cli join 0123456789abcdef
-sudo zerotier-cli peers
+sudo cat data/config/admin-password
 ```
 
-Back up the file at the destination before overwriting it. If your system does not use systemd, use its corresponding service management command. Finally, authorize the device in the management interface.
+Open `https://<public-ip>:3443`, accept the self-signed certificate, and log in
+as `admin` with that password. The UI immediately forces a password change; the
+`admin-password` file is deleted once the new password is set.
 
-### macOS
+### Distribute the planet file
 
-Back up the existing `planet` file and put the new one in `/Library/Application Support/ZeroTier/One/`. Restart ZeroTier One, join the network, and authorize the device in the management interface. The path contains spaces; quote it correctly when working in a terminal. Use the restart method appropriate for your installed client version.
+The safest approach is to copy it from the host (no download key needed):
 
-### OpenWrt
+```bash
+cp data/dist/planet ./planet
+```
 
-First confirm that your ZeroTier plugin supports a custom `planet` file and identify its actual data directory. Some plugins use `/etc/config/zero/planet`. Put the file in the appropriate location, restart ZeroTier in the OpenWrt web interface, join the network, and authorize the device. **Do not create or overwrite system symlinks without verifying the directory layout.**
+Or download it from the file server (key in `data/config/file_server.key`):
 
-### Android and iOS
+```bash
+curl -fsS \
+  -H "Authorization: Bearer $(sudo cat data/config/file_server.key)" \
+  https://<public-ip>:3000/planet -o planet
+```
 
-- **Android:** You can refer to the third-party client [ZerotierFix](https://github.com/kaaass/ZerotierFix), which supports custom Planet files. Check its version compatibility and maintenance status before use.
-- **iOS:** Replacing `planet` requires support from the client or the operating system. You can look into unofficial solutions such as [ZeroTieriOSFix](https://github.com/lemon4ex/ZeroTieriOSFix); assess their requirements and risks yourself. **WireGuard is a different protocol and cannot join a network created by this project as a ZeroTier client.**
+Place `planet` in the client's data directory and restart ZeroTier:
 
-## Operations and Security
-
-### Data Directories and Backups
-
-The deployment script mounts the following host directories into the container. Back up all of `data/zerotier/`, not just the `planet` file:
-
-| Host path | Purpose |
+| OS | Path |
 | --- | --- |
-| `data/zerotier/dist/` | Exported `planet` / `moon` files |
-| `data/zerotier/ztncui/` | Management interface configuration and login data |
-| `data/zerotier/one/` | ZeroTier identity and controller data |
-| `data/zerotier/config/` | Configuration and keys used to generate the Planet |
+| Linux | `/var/lib/zerotier-one/planet` |
+| Windows | `C:\ProgramData\ZeroTier\One\planet` |
+| macOS | `/Library/Application Support/ZeroTier/One/planet` |
+| Android/iOS | import it with a client that supports custom planets |
 
-**Back up before updating.** Choosing Update in `./deploy.sh` retains mounted data but recreates the container. Watch for the data-deletion warning before choosing Install again; it is not a lossless upgrade. When the data directory is nonempty, the deployment does not automatically regenerate `planet` / `moon`: **changing an IP address or port environment variable alone will not update the generated node information or client files.**
+After the restart, `zerotier-cli listpeers` should show your planet instead of
+the official one.
 
-### Protect the Management and Download Endpoints
+### Optional moon
 
-- Change the default password immediately after the first login. The management interface uses `http://` by default; port `3443` **does not imply TLS**.
-- Restrict access to the management port with a firewall. If exposing the interface externally, consider terminating HTTPS with a reverse proxy such as Nginx.
-- Do not share download links or keys publicly. The file service reads `SECRET_KEY` for its download key. If it is not fixed, the container generates a new key after a restart and old download links stop working. The image's `FILE_KEY` variable is **not** read by the file service.
+`data/dist/` also contains `<moon-id>.moon`. Copy it into the client's
+`moons.d/`, then:
 
-The following example assumes Nginx and the container run on the same host, you already have a certificate, and `3443` is the management port you mapped. Also restrict direct public access to `3443` with a firewall:
-
-```nginx
-server {
-    listen 80;
-    server_name planet.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name planet.example.com;
-
-    ssl_certificate /path/to/fullchain.pem;
-    ssl_certificate_key /path/to/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-
-    location / {
-        proxy_pass http://127.0.0.1:3443;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
+```bash
+zerotier-cli orbit <moon-id> <moon-id>
 ```
 
-### Using Docker Compose (Manual Setup)
+### Create and join a network
 
-This repository **does not include** a `compose.yaml`. If you prefer not to use the interactive deployment script, save the following example as `compose.yaml`, replace the public IPv4 address and `SECRET_KEY` with your own values (use a long random key), then run `docker compose up -d` from the directory containing the file:
+1. In ztncui open **Networks → Add network** and note the 16-digit network ID.
+2. On the client run `zerotier-cli join <network-id>`.
+3. Authorize the member in ztncui, then assign IPs/routes/rules as needed.
+4. `zerotier-cli listnetworks` should report `OK PRIVATE`.
 
-```yaml
-services:
-  myztplanet:
-    image: xubiaolin/zerotier-planet:latest
-    container_name: myztplanet
-    restart: unless-stopped
-    ports:
-      - "9994:9994/tcp"
-      - "9994:9994/udp"
-      - "3443:3443/tcp"
-      - "3000:3000/tcp"
-    environment:
-      IP_ADDR4: "203.0.113.10" # Replace with your server's public IPv4 address
-      IP_ADDR6: "" # If empty, the container still attempts to detect a public IPv6 address
-      ZT_PORT: "9994"
-      API_PORT: "3443"
-      FILE_SERVER_PORT: "3000"
-      SECRET_KEY: "replace-with-a-long-random-secret"
-    volumes:
-      - ./data/zerotier/dist:/app/dist
-      - ./data/zerotier/ztncui:/app/ztncui
-      - ./data/zerotier/one:/var/lib/zerotier-one
-      - ./data/zerotier/config:/app/config
+## Configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `IP_ADDR4` | auto-detected private IPv4 | **Set this to the public IPv4/hostname clients can reach**; written into moon/planet |
+| `IP_ADDR6` | empty | Optional public IPv6 |
+| `ZT_PORT` | `9994` | ZeroTier UDP port (fixed to 9994 inside the container) |
+| `API_PORT` | `3443` | ztncui HTTPS port (fixed to 3443 inside) |
+| `FILE_SERVER_PORT` | `3000` | planet download port (fixed to 3000 inside) |
+| `TLS_ENABLED` | `1` | `0` disables TLS (**not recommended**; credentials travel in clear text) |
+| `TLS_CERT` / `TLS_KEY` | self-signed | In-container paths to custom certificate/key |
+| `FILE_KEY` | generated | At least 32 characters; overrides the stored download key |
+| `ALLOW_QUERY_KEY` | `0` | Re-enable the legacy `?key=` download mode |
+| `REGENERATE_PLANET` | `1` | Rebuild the planet on every start (identity unchanged) |
+| `APP_UID` / `APP_GID` | `1000` | uid/gid used by the services |
+| `HTTPS_HOST` | `0.0.0.0` | Set to `::` to listen on IPv6 as well |
+| `TRUST_PROXY` | empty | Number of trusted proxies, e.g. `1`; enables `X-Forwarded-For` for throttling |
+
+Publish ports with `docker run -p` or Compose; the in-container ports are fixed
+so documentation, health checks and the UI stay consistent.
+
+### Custom certificates
+
+```bash
+mkdir -p data/config/tls
+cp fullchain.pem data/config/tls/fullchain.pem
+cp privkey.pem   data/config/tls/privkey.pem
+docker compose restart
 ```
 
-> Keep the example's port mappings and container environment variables in sync. If you change a listening port, update its mapping and your firewall rules too. **Do not commit a Compose file containing your real public IP address, download key, or private configuration to a public repository.** Manual Compose deployment does not provide the `deploy.sh` interactive workflow; check `docker logs myztplanet` when troubleshooting.
+The certificate must include `IP:<public-ip>` or the hostname clients use in its
+SAN. Behind Nginx/Caddy, expose only the proxy and set `TRUST_PROXY=1`; you can
+then bind `API_PORT`/`FILE_SERVER_PORT` to `127.0.0.1`.
 
-### Uninstall
+### Data and backups
 
-Run `./deploy.sh` from the project directory and select Uninstall from the menu. If you manage the container manually, you can run `docker rm -f myztplanet`; **this removes the container, not the host's `data/zerotier/` directory**. Inspect and back up the directory before deleting its contents.
+| Path | Contents |
+| --- | --- |
+| `data/one/` | ZeroTier identity, controller database, authtoken, moon |
+| `data/config/` | ztncui password database, session secret, TLS keys, download key, bootstrap password |
+| `data/dist/` | Publicly distributable `planet` and `.moon` files |
 
-## FAQ
+**`data/one/identity.secret` is the root identity of the planet.** If it is
+lost, every client must switch to a new planet. Back up `data/one/` and
+`data/config/` offline and encrypted. Image upgrades never modify these volumes.
 
-### Why can't I connect to the self-hosted Planet?
+## Migrating from upstream
 
-First confirm that the client uses the `planet` file generated by the **current deployment** and that ZeroTier has been restarted. Then check the server's public IP address, the container mappings for `9994/tcp` and `9994/udp`, the server firewall, and your cloud provider's security group. Use your actual port numbers if you customized them.
+1. Stop the old container and back up its data directory.
+2. The new container needs three volumes: `config`, `dist` and `one` (the old
+   `zerotier-one` directory maps to the new `one`).
+3. **Do not** mount `/app/ztncui` any more; the application directory is now
+   immutable, and mounting over it would prevent security updates.
+4. The old ztncui password database lives in `ztncui/src/etc/passwd`; the new
+   image reads `config/ztncui-passwd`. Copy the old file there and set
+   `ZTNCUI_PASSWD`, or delete both `config/ztncui-passwd` and
+   `config/admin-password` to let the container recreate the admin.
+5. With an existing `one/`, the entrypoint reuses `identity.secret` and
+   regenerates the planet; the planet ID stays the same.
 
-### I joined the network. Why can't I ping another device?
+## Local build and tests
 
-Confirm that both devices joined the **same Network ID**, are authorized in the management interface, and received addresses. Then check whether the destination device's OS firewall permits ICMP and the required application ports. `join OK` alone does not prove the connection works.
+```bash
+# local single-architecture build
+./build.sh
 
-### How do I tell whether a connection is direct or relayed?
+# multi-arch build and push (log in to the registry first)
+PUSH=1 IMAGE=ghcr.io/<you>/docker-zerotier-planet:latest ./build.sh
 
-Run `zerotier-cli peers` on the client and inspect the connection status of the target node. `DIRECT` means that particular connection is direct; `RELAY` means it is relayed. A `DIRECT` connection to the Planet does not guarantee direct connections to other LEAF nodes.
+# tests
+cd patch/ztncui && npm ci --omit=dev --ignore-scripts
+./tests/http-server.test.sh
+```
 
-### Why can't I see the official ZeroTier Planet?
+`tests/http-server.test.sh` contains the file-server security regression tests. Add a CI
+workflow yourself if desired: pushing workflow files with a GitHub OAuth App requires the
+additional `workflow` scope.
 
-After a client replaces its `planet` file with the one generated by this project, its root-node list points to the self-hosted Planet instead of showing the official Planet. Make sure this is the behavior you intend.
+## Security model and limitations
 
-### What if the server's public IP or communication port changes?
+- Single-node controller; there is no HA. The controller database is
+  `data/one/controller.d`.
+- Sessions live in memory; a container restart logs everyone out.
+- A self-signed certificate provides encryption, not identity. Use a trusted
+  certificate or a reverse proxy in production.
+- Keep the UI on a trusted network; do not expose port 3443 to the whole
+  internet without a strong password.
+- Without `NET_ADMIN` the container cannot create a TUN device, but the
+  controller/planet still work. Extra capabilities are only needed if the
+  container itself must join a network as a leaf.
+- The bundled controller is subject to ZeroTier's non-commercial license. Buy a
+  license or use the official controller for commercial use.
+- This project does not operate any relay or root servers; planet availability
+  depends on your host and network.
 
-Back up all of `data/zerotier/`, plan the redeployment, generate a `planet` file matching the new address, and redistribute it to clients. If the existing data directory is nonempty, **restarting the container or changing an environment variable alone will not regenerate the file**. Reinstalling may delete the old data and identity, so back up first.
+## Troubleshooting
 
-### What if I forget the management password?
+- **Clients still use the official planet**: verify the planet path and restart
+  the service; `zerotier-cli listpeers` should show your public IP; check that
+  UDP 9994 is not blocked by a firewall or NAT.
+- **Cannot log in**: check that `data/config/admin-password` exists. Delete
+  `data/config/ztncui-passwd` and `admin-password` and restart to reset (this
+  removes all admin accounts).
+- **Container restarts repeatedly**: `docker logs <container>`; common causes are
+  a missing public IP, a port conflict, volumes not owned by uid 1000, or an
+  unreadable certificate.
+- **Certificate warning**: expected with the self-signed certificate; import it
+  or switch to a trusted certificate.
+- **Download returns 401**: use `Authorization: Bearer <key>` rather than
+  `?key=`; or copy `data/dist/planet` directly.
 
-Run `./deploy.sh` from the project directory and select Reset Password from the menu. The script restores the default password, `password`, and restarts the container; change it immediately after signing in. Do not delete `data/zerotier/` to reset a password—it also contains node and network data.
+## License
 
-### Are custom domains and ARM servers supported?
+- Original code in this repository: GPL-3.0-only, see [LICENSE](LICENSE).
+- ztncui: GPL-3.0, see its repository.
+- ZeroTier One core: MPL-2.0; `nonfree/controller`: ZeroTier SOURCE-AVAILABLE
+  LICENSE (non-commercial only), see [NOTICE](NOTICE).
 
-You can access the management interface through a domain and reverse proxy. Planet generation uses `IP_ADDR4` / `IP_ADDR6` for node addresses; you cannot simply substitute a domain name for an IP address. The image build script includes `linux/arm64` and `linux/amd64`; confirm that the image you pull includes the architecture you need.
-
-### Why is no virtual network interface created inside a PVE LXC container?
-
-ZeroTier needs access to the TUN device. Check TUN device mapping, permissions, and networking for your Proxmox / LXC version. Changing the container's privilege mode or loosening device permissions affects its security boundary; do not apply old configuration snippets without understanding their effects.
-
-## Project and Community
-
-### Roadmap
-
-- [ ] Support multiple Planets
-- [x] Customize the management interface port
-- [ ] Deploy Planet and Controller separately
-
-### Risk Statement
-
-This project is for learning and research. Self-hosting requires you to maintain your server, credentials, and client configuration. Evaluate the security and availability risks and comply with applicable laws and service terms. The maintainers are not liable for losses arising from use of this project.
-
-### Acknowledgments
-
-Thanks to the following supporters (in their original order):
-
-随性、我、你好、Calvin、小猪猪的饲养员、情若犹在、天天星期天、啊乐、夏末秋至、\*\*忠、岸芷汀兰、Kimi Chen、匿名、阳光报告旷课、濂溪先生、Water、匿名、匿名、陆、精钢葫芦娃、唯、王小新、匿名、Duck不必。
-
-### Related Projects and References
-
-- [WireGuard One-Click Script](https://github.com/xubiaolin/wireguard-onekey)
-- [ZeroTier Virtual LAN Explained](https://www.glimmer.ltd/2021/3299983056/)
-- [Build a ZeroTier Planet / Controller in Five Minutes](https://v2ex.com/t/799623)
+Upstream: <https://github.com/xubiaolin/docker-zerotier-planet>

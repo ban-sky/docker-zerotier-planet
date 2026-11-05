@@ -1,0 +1,36 @@
+services:
+  zerotier-planet:
+    image: docker-zerotier-planet:latest
+    build:
+      context: .
+      args:
+        ZT_VERSION: "1.16.2"
+        ZT_COMMIT: "fc5c3ec22090b5b2a0f274e863651fe9ca489bf4"
+    container_name: zerotier-planet
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${ZT_PORT:-9994}:9994/udp"
+      - "${API_PORT:-3443}:3443/tcp"
+      - "${FILE_SERVER_PORT:-3000}:3000/tcp"
+    environment:
+      IP_ADDR4: "${IP_ADDR4:?set IP_ADDR4 in .env}"
+      IP_ADDR6: "${IP_ADDR6:-}"
+      ZT_PORT: "9994"
+      API_PORT: "3443"
+      FILE_SERVER_PORT: "3000"
+      TLS_ENABLED: "1"
+    volumes:
+      - "./data/config:/app/config"
+      - "./data/dist:/app/dist"
+      - "./data/one:/var/lib/zerotier-one"
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "/usr/sbin/zerotier-cli", "info"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

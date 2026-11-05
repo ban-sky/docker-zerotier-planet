@@ -1,0 +1,52 @@
+diff --git a/src/controllers/networkController.js b/src/controllers/networkController.js
+index 50c10ee..7b35a69 100644
+--- a/src/controllers/networkController.js
++++ b/src/controllers/networkController.js
+@@ -642,17 +642,21 @@ exports.members = async function(req, res) {
+     req.sanitize('id').trim();
+     req.sanitize('id').escape();
+ 
+-    if (req.body.auth) {
++    if (Object.prototype.hasOwnProperty.call(req.body, 'auth')) {
+       req.checkBody('auth', 'Authorization state must be boolean').isBoolean();
+       req.sanitize('auth').trim();
+       req.sanitize('auth').escape();
+ 
+       errors = req.validationErrors();
+ 
++      if (!errors && typeof req.body.auth !== 'boolean' && req.body.auth !== 'true' && req.body.auth !== 'false') {
++        errors = [{ param: 'auth', msg: 'Authorization state must be boolean', value: req.body.auth }];
++      }
++
+       if (!errors) {
+         const auth =
+           {
+-            authorized: req.body.auth
++            authorized: req.body.auth === true || req.body.auth === 'true'
+           };
+ 
+         try {
+@@ -661,17 +665,21 @@ exports.members = async function(req, res) {
+           throw err;
+         }
+       }
+-    } else if (req.body.activeBridge) {
++    } else if (Object.prototype.hasOwnProperty.call(req.body, 'activeBridge')) {
+       req.checkBody('activeBridge', 'activeBridge state must be boolean').isBoolean();
+       req.sanitize('activeBridge').trim();
+       req.sanitize('activeBridge').escape();
+ 
+       errors = req.validationErrors();
+ 
++      if (!errors && typeof req.body.activeBridge !== 'boolean' && req.body.activeBridge !== 'true' && req.body.activeBridge !== 'false') {
++        errors = [{ param: 'activeBridge', msg: 'activeBridge state must be boolean', value: req.body.activeBridge }];
++      }
++
+       if (!errors) {
+         const activeBridge =
+           {
+-            activeBridge: req.body.activeBridge
++            activeBridge: req.body.activeBridge === true || req.body.activeBridge === 'true'
+           };
+ 
+         try {

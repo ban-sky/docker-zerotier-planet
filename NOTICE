@@ -1,0 +1,43 @@
+# NOTICE
+
+This repository packages and patches the following projects. The combined
+container image contains components under different licenses; read this notice
+before distributing or running it.
+
+## ZeroTier One 1.16.2
+
+- Project: https://github.com/zerotier/ZeroTierOne
+- Core (`node/`, `service/`): Mozilla Public License 2.0 (`LICENSE-MPL.txt` in
+  the upstream tree).
+- Embedded network controller (`nonfree/controller/`): ZeroTier
+  SOURCE-AVAILABLE LICENSE v1.0.
+
+**The source-available controller license permits non-commercial use only.**
+It excludes use by or for the benefit of for-profit companies, government or
+military entities, non-profit organizations and charities, as well as paid or
+unpaid services powered by the software. This image is built with
+`ZT_NONFREE=1`, so the controller is included. Do not use this image for
+commercial purposes. The full upstream license texts are installed in the
+image at `/usr/share/licenses/zerotier/`.
+
+## ztncui 0.8.14
+
+- Project: https://github.com/key-networks/ztncui
+- Pinned commit: `1b2284864de48d2dcae22582fff122fe24909c3d`
+- License: GNU GPL v3 (`LICENSE`).
+
+The files in `patch/ztncui/` are modified versions of ztncui source files and
+are distributed under the same GPLv3 terms.
+
+## This repository's original code
+
+`patch/mkworld_custom.cpp`, `patch/entrypoint.sh`, `patch/http_server.js`,
+`patch/configure-moon.js`, the ztncui overlay, `deploy.sh`, `build.sh`, tests
+and documentation are licensed under GPL-3.0-only (see `LICENSE`), to the
+extent permitted by the upstream licenses.
+
+## No warranty
+
+The software is provided "as is", without warranty of any kind. Running a
+public ZeroTier controller exposes a network service; you are responsible for
+firewalling it, keeping it updated and complying with the applicable licenses.

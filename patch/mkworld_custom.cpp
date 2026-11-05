@@ -1,6 +1,8 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * mkworld for ZeroTier One 1.16.x
+ *
+ * Copyright (C) 2011-2026 ZeroTier, Inc. (original mkworld)
+ * Copyright (C) 2026 ban-sky (adaptation to the ECC / header-only World API)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,220 +15,322 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * ---------------------------------------------------------------------------
+ * This tool builds a signed planet (world.bin) for a private ZeroTier
+ * network controller.
+ *
+ * ZeroTier 1.16 replaced C25519 key pairs with ECC key pairs (64 byte public
+ * key + 64 byte private key) and removed attic/world. World is now a
+ * header-only class in node/World.hpp. The signing key is read from a normal
+ * ZeroTier identity.secret file, so no extra key files are required.
+ *
+ * Example:
+ *   mkworld --identity identity.secret --moon moon.json --output planet
  */
 
- /*
-  * This utility makes the World from the configuration specified below.
-  * It probably won't be much use to anyone outside ZeroTier, Inc. except
-  * for testing and experimentation purposes.
-  *
-  * If you want to make your own World you must edit this file.
-  *
-  * When run, it expects two files in the current directory:
-  *
-  * previous.c25519 - key pair to sign this world (key from previous world)
-  * current.c25519 - key pair whose public key should be embedded in this world
-  *
-  * If these files do not exist, they are both created with the same key pair
-  * and a self-signed initial World is born.
-  */
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 #include <nlohmann/json.hpp>
-#include <string>
-#include <vector>
-#include <algorithm>
 
 #include <node/Constants.hpp>
-#include <node/World.hpp>
-#include <node/C25519.hpp>
+#include <node/ECC.hpp>
 #include <node/Identity.hpp>
 #include <node/InetAddress.hpp>
+#include <node/World.hpp>
 #include <osdep/OSUtils.hpp>
 
-using namespace ZeroTier;
-using json = nlohmann::json;
+#include <sys/stat.h>
 
-void printHelp() {
-	printf("Usage: mkworld [options]\n");
-	printf("Options:\n");
-	printf("  -h, --help          Display this help message\n");
-	printf("  -j, --json2bin      Convert from JSON file to world.bin\n");
-	printf("  -b, --bin2json      Convert from world.bin to JSON format\n");
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
+using namespace ZeroTier;
+
+namespace {
+
+void usage(const char* argv0)
+{
+	std::fprintf(stderr,
+		"Usage: %s [options]\n"
+		"\n"
+		"Options:\n"
+		"  -i, --identity <file>   identity.secret containing the signing key (default: identity.secret)\n"
+		"  -m, --moon <file>       moon.json with roots and stableEndpoints (default: moon.json)\n"
+		"  -o, --output <file>     output planet file (default: world.bin)\n"
+		"  -t, --timestamp <ms>    world timestamp in milliseconds (default: current time)\n"
+		"  -w, --world-id <id>     world ID (default: %llu, Earth)\n"
+		"  -d, --dump <file>       print a planet file as JSON and exit\n"
+		"  -h, --help              show this help\n",
+		argv0, (unsigned long long)ZT_WORLD_ID_EARTH);
 }
 
-int jsonToBinary() {
-	std::string previous, current;
-	if ((!OSUtils::readFile("previous.c25519", previous)) || (!OSUtils::readFile("current.c25519", current))) {
-		C25519::Pair np(C25519::generate());
-		previous = std::string();
-		previous.append((const char*)np.pub.data, ZT_C25519_PUBLIC_KEY_LEN);
-		previous.append((const char*)np.priv.data, ZT_C25519_PRIVATE_KEY_LEN);
-		current = previous;
-		OSUtils::writeFile("previous.c25519", previous);
-		OSUtils::writeFile("current.c25519", current);
-		fprintf(stderr, "INFO: created initial world keys: previous.c25519 and current.c25519 (both initially the same)" ZT_EOL_S);
+bool readTextFile(const std::string& path, std::string& out)
+{
+	if (!OSUtils::readFile(path.c_str(), out)) {
+		std::fprintf(stderr, "ERROR: cannot read %s\n", path.c_str());
+		return false;
 	}
+	return true;
+}
 
-	if ((previous.length() != (ZT_C25519_PUBLIC_KEY_LEN + ZT_C25519_PRIVATE_KEY_LEN)) || (current.length() != (ZT_C25519_PUBLIC_KEY_LEN + ZT_C25519_PRIVATE_KEY_LEN))) {
-		fprintf(stderr, "FATAL: previous.c25519 or current.c25519 empty or invalid" ZT_EOL_S);
+uint64_t parseU64(const char* s, bool& ok)
+{
+	char* end = nullptr;
+	errno = 0;
+	const unsigned long long v = std::strtoull(s, &end, 10);
+	ok = (errno == 0) && end && (*end == '\0');
+	return (uint64_t)v;
+}
+
+int makeWorld(const std::string& identityPath, const std::string& moonPath, const std::string& outputPath,
+	uint64_t timestamp, uint64_t worldId)
+{
+	std::string idser;
+	if (!readTextFile(identityPath, idser)) {
 		return 1;
 	}
-	C25519::Pair previousKP;
-	memcpy(previousKP.pub.data, previous.data(), ZT_C25519_PUBLIC_KEY_LEN);
-	memcpy(previousKP.priv.data, previous.data() + ZT_C25519_PUBLIC_KEY_LEN, ZT_C25519_PRIVATE_KEY_LEN);
-	C25519::Pair currentKP;
-	memcpy(currentKP.pub.data, current.data(), ZT_C25519_PUBLIC_KEY_LEN);
-	memcpy(currentKP.priv.data, current.data() + ZT_C25519_PUBLIC_KEY_LEN, ZT_C25519_PRIVATE_KEY_LEN);
 
-	// =========================================================================
-	// EDIT BELOW HERE
+	Identity id;
+	if (!id.fromString(idser.c_str())) {
+		std::fprintf(stderr, "ERROR: %s is not a valid ZeroTier identity\n", identityPath.c_str());
+		return 1;
+	}
+	if (!id.hasPrivate()) {
+		std::fprintf(stderr, "ERROR: %s does not contain a private key\n", identityPath.c_str());
+		return 1;
+	}
+	if (!id.locallyValidate()) {
+		std::fprintf(stderr, "ERROR: identity in %s failed local validation\n", identityPath.c_str());
+		return 1;
+	}
+
+	std::string moonJson;
+	if (!readTextFile(moonPath, moonJson)) {
+		return 1;
+	}
+
+	nlohmann::json config;
+	try {
+		config = nlohmann::json::parse(moonJson);
+	}
+	catch (const std::exception& e) {
+		std::fprintf(stderr, "ERROR: cannot parse %s: %s\n", moonPath.c_str(), e.what());
+		return 1;
+	}
+
+	if (!config.contains("roots") || !config["roots"].is_array() || config["roots"].empty()) {
+		std::fprintf(stderr, "ERROR: %s has no roots[] array\n", moonPath.c_str());
+		return 1;
+	}
 
 	std::vector<World::Root> roots;
-
-	const uint64_t id = ZT_WORLD_ID_EARTH;
-	const uint64_t ts = 1567191349589ULL; // August 30th, 2019
-
-	std::string fileContent;
-	if (!OSUtils::readFile("moon.json", fileContent)) {
-		fprintf(stderr, "Failed to open config file." ZT_EOL_S);
-		return 1;
-	}
-
-	// 解析JSON数据
-	json config = json::parse(fileContent);
-
-
-	for (auto& root : config["roots"]) {
-		roots.push_back(World::Root());
-		roots.back().identity = Identity(root["identity"].get<std::string>().c_str());
-		for (auto& endpoint : root["stableEndpoints"]) {
-			roots.back().stableEndpoints.push_back(InetAddress(endpoint.get<std::string>().c_str()));
+	for (const auto& root : config["roots"]) {
+		if (!root.contains("identity") || !root["identity"].is_string()) {
+			std::fprintf(stderr, "ERROR: root entry has no identity string\n");
+			return 1;
 		}
+
+		World::Root r;
+		if (!r.identity.fromString(root["identity"].get<std::string>().c_str())) {
+			std::fprintf(stderr, "ERROR: root identity is invalid\n");
+			return 1;
+		}
+		if (!r.identity.locallyValidate()) {
+			std::fprintf(stderr, "ERROR: root identity failed local validation\n");
+			return 1;
+		}
+
+		if (root.contains("stableEndpoints")) {
+			if (!root["stableEndpoints"].is_array()) {
+				std::fprintf(stderr, "ERROR: stableEndpoints must be an array\n");
+				return 1;
+			}
+			for (const auto& ep : root["stableEndpoints"]) {
+				if (!ep.is_string()) {
+					std::fprintf(stderr, "ERROR: stableEndpoints entries must be strings\n");
+					return 1;
+				}
+				InetAddress addr;
+				if (!addr.fromString(ep.get<std::string>().c_str()) || (!addr.isV4() && !addr.isV6())) {
+					std::fprintf(stderr, "ERROR: invalid stable endpoint: %s\n", ep.get<std::string>().c_str());
+					return 1;
+				}
+				r.stableEndpoints.push_back(addr);
+			}
+		}
+
+		roots.push_back(r);
 	}
 
-	fprintf(stderr, "INFO: generating and signing id==%llu ts==%llu" ZT_EOL_S, (unsigned long long)id, (unsigned long long)ts);
-
-	World nw = World::make(World::TYPE_PLANET, id, ts, currentKP.pub, roots, previousKP);
-
-	Buffer<ZT_WORLD_MAX_SERIALIZED_LENGTH> outtmp;
-	nw.serialize(outtmp, false);
-	World testw;
-	testw.deserialize(outtmp, 0);
-	if (testw != nw) {
-		fprintf(stderr, "FATAL: serialization test failed!" ZT_EOL_S);
+	if (roots.size() > ZT_WORLD_MAX_ROOTS) {
+		std::fprintf(stderr, "ERROR: too many roots (%zu, max %d)\n", roots.size(), ZT_WORLD_MAX_ROOTS);
 		return 1;
 	}
 
-	OSUtils::writeFile("world.bin", std::string((const char*)outtmp.data(), outtmp.size()));
-	fprintf(stderr, "INFO: world.bin written with %u bytes of binary world data." ZT_EOL_S, outtmp.size());
+	// The root identity also signs this planet. Keeping the identity and the
+	// world signing key the same means there is only one secret to protect,
+	// and the planet can be re-signed after a restore.
+	const ECC::Pair signingKey = id.privateKeyPair();
+	const ECC::Public updatesKey = id.publicKey();
 
-	fprintf(stdout, ZT_EOL_S);
-	fprintf(stdout, "#define ZT_DEFAULT_WORLD_LENGTH %u" ZT_EOL_S, outtmp.size());
-	fprintf(stdout, "static const unsigned char ZT_DEFAULT_WORLD[ZT_DEFAULT_WORLD_LENGTH] = {");
-	for (unsigned int i = 0; i < outtmp.size(); ++i) {
-		const unsigned char* d = (const unsigned char*)outtmp.data();
-		if (i > 0)
-			fprintf(stdout, ",");
-		fprintf(stdout, "0x%.2x", (unsigned int)d[i]);
+	std::fprintf(stderr, "INFO: building planet id=%llu ts=%llu roots=%zu\n",
+		(unsigned long long)worldId, (unsigned long long)timestamp, roots.size());
+
+	World world = World::make(World::TYPE_PLANET, worldId, timestamp, updatesKey, roots, signingKey);
+
+	Buffer<ZT_WORLD_MAX_SERIALIZED_LENGTH> out;
+	world.serialize(out, false);
+
+	// Round-trip check: never ship a planet that cannot be parsed.
+	World check;
+	try {
+		check.deserialize(out, 0);
 	}
-	fprintf(stdout, "};" ZT_EOL_S);
+	catch (const std::exception& e) {
+		std::fprintf(stderr, "ERROR: generated planet failed to deserialize: %s\n", e.what());
+		return 1;
+	}
+	if (!(check == world)) {
+		std::fprintf(stderr, "ERROR: generated planet failed the round-trip check\n");
+		return 1;
+	}
+
+	// deserialize() only parses; verify the signature explicitly so a build
+	// with a broken signing key can never produce an unusable planet.
+	Buffer<ZT_WORLD_MAX_SERIALIZED_LENGTH> signedPart;
+	world.serialize(signedPart, true);
+	if (!ECC::verify(updatesKey, signedPart.data(), signedPart.size(), world.signature().data)) {
+		std::fprintf(stderr, "ERROR: generated planet signature does not verify\n");
+		return 1;
+	}
+
+	const std::string bytes((const char*)out.data(), out.size());
+	if (!OSUtils::writeFile(outputPath.c_str(), bytes)) {
+		std::fprintf(stderr, "ERROR: cannot write %s\n", outputPath.c_str());
+		return 1;
+	}
+	(void)::chmod(outputPath.c_str(), 0644);
+
+	std::fprintf(stderr, "INFO: wrote %s (%u bytes)\n", outputPath.c_str(), out.size());
 	return 0;
 }
 
-void binaryToJson() {
-	// Read world.bin file into memory
-	std::string binContent;
-	if (!OSUtils::readFile("world.bin", binContent)) {
-		fprintf(stderr, "Failed to open world.bin file." ZT_EOL_S);
-		return;
+int dumpWorld(const std::string& path)
+{
+	std::string bin;
+	if (!readTextFile(path, bin)) {
+		return 1;
 	}
 
-	// Deserialize the binary data into a World object
-	Buffer<ZT_WORLD_MAX_SERIALIZED_LENGTH> binBuffer(binContent.data(), binContent.size());
-	World world;
-	if (!world.deserialize(binBuffer, 0)) {
-		fprintf(stderr, "Failed to deserialize world.bin content." ZT_EOL_S);
-		return;
-	}
-
-	// Create a JSON object to store the world data
-	json worldJson;
-
-
-	// Add roots array to the JSON object
-	json rootsJson;
-	for (const auto& root : world.roots()) {
-		json rootJson;
-
-		// Add identity to the root JSON object
-		char identityStr[ZT_IDENTITY_STRING_BUFFER_LENGTH];
-		root.identity.toString(true, identityStr); // Include private key
-		rootJson["identity"] = identityStr;
-
-		// Add stableEndpoints array to the root JSON object
-		json stableEndpointsJson;
-		for (const auto& endpoint : root.stableEndpoints) {
-			char ipStr[64];
-			endpoint.toString(ipStr);
-			stableEndpointsJson.push_back(ipStr);
+	try {
+		Buffer<ZT_WORLD_MAX_SERIALIZED_LENGTH> buf(bin.data(), bin.size());
+		World world;
+		if (!world.deserialize(buf, 0)) {
+			std::fprintf(stderr, "ERROR: cannot deserialize %s\n", path.c_str());
+			return 1;
 		}
-		rootJson["stableEndpoints"] = stableEndpointsJson;
 
-		rootsJson.push_back(rootJson);
+		nlohmann::json j;
+		j["id"] = world.id();
+		j["timestamp"] = world.timestamp();
+		j["type"] = (world.type() == World::TYPE_PLANET) ? "planet" : "moon";
+		j["roots"] = nlohmann::json::array();
+		for (const auto& root : world.roots()) {
+			nlohmann::json r;
+			char idbuf[ZT_IDENTITY_STRING_BUFFER_LENGTH];
+			r["identity"] = root.identity.toString(false, idbuf);
+			r["stableEndpoints"] = nlohmann::json::array();
+			for (const auto& ep : root.stableEndpoints) {
+				char epbuf[64];
+				r["stableEndpoints"].push_back(ep.toString(epbuf));
+			}
+			j["roots"].push_back(r);
+		}
+		std::cout << j.dump(2) << std::endl;
+		return 0;
 	}
-	worldJson["roots"] = rootsJson;
-	std::string jsonStr = worldJson.dump(4);
-	printf("World JSON:\n%s\n", jsonStr.c_str());
-	if (!OSUtils::writeFile("config.json", jsonStr.c_str(), jsonStr.size())) {
-		fprintf(stderr, "Failed to write JSON data to config.json." ZT_EOL_S);
-	}
-	else {
-		printf("JSON data successfully written to config.json." ZT_EOL_S);
+	catch (const std::exception& e) {
+		std::fprintf(stderr, "ERROR: %s\n", e.what());
+		return 1;
 	}
 }
 
+}	// namespace
 
 int main(int argc, char** argv)
 {
-	bool json2bin = false;
-	bool bin2json = false;
+	std::string identityPath = "identity.secret";
+	std::string moonPath = "moon.json";
+	std::string outputPath = "world.bin";
+	std::string dumpPath;
+	uint64_t timestamp = 0;
+	uint64_t worldId = ZT_WORLD_ID_EARTH;
 
 	for (int i = 1; i < argc; ++i) {
-		std::string arg = argv[i];
-		if (arg == "-h" || arg == "--help") {
-			printHelp();
+		const std::string a = argv[i];
+		auto next = [&](const char* opt) -> const char* {
+			if (i + 1 >= argc) {
+				std::fprintf(stderr, "ERROR: %s requires an argument\n", opt);
+				std::exit(2);
+			}
+			return argv[++i];
+		};
+
+		if (a == "-h" || a == "--help") {
+			usage(argv[0]);
 			return 0;
 		}
-		else if (arg == "-j" || arg == "--json2bin") {
-			json2bin = true;
+		else if (a == "-i" || a == "--identity") {
+			identityPath = next(a.c_str());
 		}
-		else if (arg == "-b" || arg == "--bin2json") {
-			bin2json = true;
+		else if (a == "-m" || a == "--moon") {
+			moonPath = next(a.c_str());
+		}
+		else if (a == "-o" || a == "--output") {
+			outputPath = next(a.c_str());
+		}
+		else if (a == "-d" || a == "--dump") {
+			dumpPath = next(a.c_str());
+		}
+		else if (a == "-t" || a == "--timestamp") {
+			bool ok = false;
+			timestamp = parseU64(next(a.c_str()), ok);
+			if (!ok || timestamp == 0) {
+				std::fprintf(stderr, "ERROR: invalid timestamp\n");
+				return 2;
+			}
+		}
+		else if (a == "-w" || a == "--world-id") {
+			bool ok = false;
+			worldId = parseU64(next(a.c_str()), ok);
+			if (!ok || worldId == 0) {
+				std::fprintf(stderr, "ERROR: invalid world ID\n");
+				return 2;
+			}
+		}
+		else {
+			std::fprintf(stderr, "ERROR: unknown argument: %s\n", a.c_str());
+			usage(argv[0]);
+			return 2;
 		}
 	}
 
-	if (!(json2bin || bin2json)) {
-		// Default behavior: convert from JSON to world.bin
-		json2bin = true;
+	if (!dumpPath.empty()) {
+		return dumpWorld(dumpPath);
 	}
 
-	if (json2bin && bin2json) {
-		printf("Error: Cannot specify both JSON to binary and binary to JSON conversion options.\n");
-		printHelp();
-		return 1;
+	if (timestamp == 0) {
+		timestamp = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::system_clock::now().time_since_epoch())
+						.count();
 	}
 
-	if (json2bin) {
-		jsonToBinary();
-	}
-	else if (bin2json) {
-		binaryToJson();
-	}
-
-	return 0;
+	return makeWorld(identityPath, moonPath, outputPath, timestamp, worldId);
 }

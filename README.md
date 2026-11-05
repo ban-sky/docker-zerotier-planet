@@ -1,292 +1,239 @@
-# Docker ZeroTier Planet
+# docker-zerotier-planet（安全加固版）
 
-[简体中文](README.md) · [English](README.en.md)
+在 Docker 中自建 **ZeroTier 行星服务器（planet）** 和 **网络控制器（ztncui）**。
+本项目是 [xubiaolin/docker-zerotier-planet](https://github.com/xubiaolin/docker-zerotier-planet)
+的维护分支，已升级到 **ZeroTier One 1.16.2**，并针对上游 issue 中的安全问题做了系统性加固。
 
-使用 Docker 在 Linux 服务器上部署自己的 ZeroTier Planet，同时提供网络管理界面和 `planet` / `moon` 文件下载服务。适合希望自行管理 ZeroTier 根节点与网络的用户。
+> **许可证提醒（重要）**
+> ZeroTier 1.16 起把 controller 移到了 `nonfree/`，采用 *ZeroTier SOURCE-AVAILABLE
+> LICENSE*，**仅允许个人非商业用途**（以及学生教育/学术、30 天以内的评估）。
+> 本镜像因此以 `ZT_NONFREE=1` 构建。公司、政府/军队、非营利组织或任何付费服务
+> 场景**不得**使用本镜像中的 controller。详见 [NOTICE](NOTICE) 与
+> `/usr/share/licenses/zerotier/`。
 
-> **先了解：**客户端需要替换 `planet` 文件才能使用自建 Planet；自建根节点不保证设备间一定直连，也不等于所有业务流量都经过或都不经过这台服务器。管理界面默认通过 **HTTP** 访问，部署后请尽快修改默认密码。
+## 相比上游的改动
 
-<a href="https://edgeone.ai/?from=github">
-  <img src="assets/edgeone-logo.png" alt="EdgeOne Logo" /> 本项目的 CDN 加速和安全保护由腾讯 EdgeOne 赞助
-</a>
+### 安全（对应 issue #215 的五项）
 
-## 广告
+| 问题 | 处理方式 |
+| --- | --- |
+| 默认 `admin/password` 凭据 | 首次启动生成 24 字符随机密码，写入 `config/admin-password`（0600），首次登录强制改密，改密后自动删除该文件 |
+| 文件服务器路径穿越 | 仅允许 `planet` 与 `*.moon`；`realpath` 必须仍位于 `dist/` 内；拒绝符号链接逃逸、`..`、编码穿越 |
+| 下载密钥放在 URL query | 默认只接受 `Authorization: Bearer` / `X-Api-Key`；32 字节随机密钥持久化到 0600 文件；`?key=` 仅在显式设置 `ALLOW_QUERY_KEY=1` 时启用 |
+| 依赖未锁版本 | ZeroTier 固定到 `1.16.2` + commit 校验；ztncui 固定 commit；npm 使用提交的 lockfile 与 `npm ci --omit=dev --ignore-scripts` |
+| 管理界面/文件服务器明文 HTTP | 默认 TLS（自签 ECDSA P-256，SAN 含服务器 IP），TLS 1.2+、HSTS；可挂载自有证书 |
 
-- [雨云容器服务一键部署-买服务器上雨云](https://app.rainyun.com/apps/rca/store/6215?ref=220429)
-- [MyHeadScale-5台设备永久免费-不限流量](https://hs.bj.markxu.vip/?from=github)
-- [Bandwagonhost-CN2 优质线路](https://bandwagonhost.com/aff.php?aff=82099)
+### 其他 issue
 
-## 交流与支持
+- **#213**：1.16 删除了 `attic/world`，旧 `mkworld` 无法编译。已按 `node/World.hpp` + `ECC` API 重写 `mkworld`，并用同一身份签名/校验生成的 planet。
+- **#200**：`deploy.sh` 的端口提示不再被命令替换吞掉，端口严格校验 `1-65535`。
+- **#180**：`docker run` 前先 `mkdir -p` 数据目录，兼容 podman。
+- **#196**：镜像内提供 `/usr/sbin/zerotier-cli`、`zerotier-idtool`，可直接 `docker exec`；不再需要 `/bak` 模板。
+- **#208**：`activeBridge`/`auth` 严格按布尔值处理，字符串 `"false"` 不再被当成真。
+- **#185**：用带 TTL 的 `BoundedMemoryStore` 替代会告警的默认 MemoryStore。
+- **#163**：不再自己生成 authtoken，而是等待 ZeroTier 生成后读取，避免 controller API 401。
+- **#216**：提供 `build.sh` 多架构构建与本地 `Dockerfile`，不再依赖上游 Docker Hub 镜像；镜像可自行推送到 GHCR。
+- **#157**：可设置 `HTTPS_HOST=::` 让管理界面同时监听 IPv6（默认 `0.0.0.0`）。
+- **#205**：仅构建 `linux/amd64` 与 `linux/arm64`，不提供 armv7。
 
-- [Telegram 交流群](https://t.me/+JduuWfhSEPdlNDk1)
-- QQ 群：
-  - 692635772
-  - 785620313
-  - 316239544
-  - 1027678459
-  - 651935808
+### 其他加固
 
-如果项目对你有帮助，也可以支持该项目
-
-<img src="assets/donate.png" width="180">
-
-微信公众号：
-
-<img src="assets/wx_qrcode_pub.jpg" width="180" alt="微信公众号二维码" />
-
-## 阅读导航
-
-- [广告](#广告)
-- [交流与支持](#交流与支持)
-- [快速开始](#快速开始)：准备服务器、部署容器、创建网络
-- [客户端接入](#客户端接入)：分平台替换 `planet` 并加入网络
-- [运维与安全](#运维与安全)：数据备份、更新、卸载、Compose 与 HTTPS
-- [常见问题](#常见问题)：连接、端口、IP 变更等
-- [项目与社区](#项目与社区)：开发计划、风险声明、致谢与参考资料
+- 容器内进程以 uid/gid 1000 运行；entrypoint 只在修正卷权限时短暂使用 root。
+- 删除 `set -x`，日志不会出现 authtoken、controller token 或下载密钥。
+- ztncui：CSP、HSTS、SameSite/HttpOnly/Secure Cookie、同源 Origin/Referer 校验、
+  登录限流、开放重定向修复、原型链用户名 DoS 修复、会话固定修复、错误页不泄漏堆栈。
+- 原生 `argon2` 改为纯 WASM `hash-wasm`，无需 node-gyp，并统一使用 Argon2id（64 MiB）。
+- 密码文件原子写入、0600；管理员只能修改自己的密码；不能删除自己或最后一个管理员。
+- `docker-compose.yml` 默认 `read_only`、`no-new-privileges`、`tmpfs /tmp`。
+- 增加 `SECURITY.md`、漏洞披露流程、依赖锁定和回归测试。
 
 ## 快速开始
 
-### 1. 准备服务器
+### 要求
 
-准备一台有**公网 IPv4 地址**的 Linux 服务器，安装 Docker 和 Git。部署脚本面向 Linux；镜像构建脚本面向 `linux/amd64` 和 `linux/arm64`。尚未安装 Docker 时，可参考 [Docker 官方安装文档](https://docs.docker.com/engine/install/)。
+- Docker 24+ / Docker Compose v2；`amd64` 或 `arm64`
+- 一台有公网 IPv4 的 Linux 主机（NAT 后需要端口映射）
+- 放行 **UDP 9994**；管理界面 **TCP 3443**；planet 下载 **TCP 3000**
+- 约 512 MiB 内存、1 GiB 磁盘
 
-在服务器防火墙和云平台安全组中放行实际使用的端口（安装时可按提示修改默认值）：
-
-| 默认端口 | 协议 | 用途 |
-| --- | --- | --- |
-| `9994` | TCP、UDP | ZeroTier 通信 |
-| `3443` | TCP | Web 管理界面，默认是 **HTTP**，不是 HTTPS |
-| `3000` | TCP | `planet` / `moon` 文件下载服务；仅在需要远程下载时对外开放 |
-
-> 不建议将管理界面或文件下载入口直接暴露给不受信任的访问者。下载链接中的密钥也应当按凭据保管。
-
-### 2. 运行部署脚本
+### 方式一：脚本
 
 ```bash
-git clone https://github.com/xubiaolin/docker-zerotier-planet.git
+git clone https://github.com/ban-sky/docker-zerotier-planet.git
 cd docker-zerotier-planet
 ./deploy.sh
 ```
 
-按提示选择 **1. 安装**，依次填写 ZeroTier、管理界面和文件下载端口，并选择自动获取或手动填写服务器公网 IP。
+脚本会询问公网 IP 和端口，创建 `data/` 目录；本地没有镜像时先构建，然后启动容器并等待健康检查。
+已有同名容器时会先询问是否替换；数据目录不会被删除。
 
-部署脚本使用 `docker run` 创建容器；仓库没有自带的 Compose 配置文件。
-
-**已有部署不要直接选择重新安装：该流程会删除当前项目目录下的 `data/zerotier/`，请先备份，升级请选“更新”。**若镜像拉取失败，先确认 Docker 可以访问镜像仓库，不要直接覆盖服务器现有的 Docker 配置。
-
-请在项目目录运行脚本：数据路径按当前工作目录计算。
-
-部署后可检查容器和日志：
+### 方式二：Compose
 
 ```bash
-docker ps --filter name=myztplanet
-docker logs myztplanet
+git clone https://github.com/ban-sky/docker-zerotier-planet.git
+cd docker-zerotier-planet
+cat > .env <<'EOF'
+IP_ADDR4=203.0.113.10
+# IP_ADDR6=2001:db8::10
+EOF
+# 首次使用本地构建
+docker compose up -d --build
 ```
 
-### 3. 创建网络并下载文件
-
-1. 打开 `http://<服务器公网 IP>:3443`（若修改了管理端口，请使用实际端口）并登录。**默认用户名为 `admin`，默认密码为 `password`；首次登录后立即修改密码。**
-2. 在 **Networks** 页面点击 **Add Network**，填写名称并创建网络，记下生成的 **Network ID**。需要自动分配虚拟 IP 时，在网络设置中使用 **Easy Setup** 配置地址段。
-3. 从部署完成时脚本给出的下载地址，或从服务器的 `./data/zerotier/dist/` 获取 `planet` 文件，将它分发给需要连接此私有 Planet 的客户端。`moon` 文件同样生成在该目录中，本项目已把节点自身配置为 moon，其他节点按需下载使用。
-
-![管理界面与网络列表](assets/ztncui.png)
-
-> **请备份整个 `data/zerotier/` 目录。**其中不仅有供客户端下载的文件，还包含节点身份、签名密钥、控制器和管理界面数据。不要将该目录或下载密钥提交到公开仓库。
-
-### 这套部署包含什么
-
-| 组件 | 作用 |
-| --- | --- |
-| Planet | ZeroTier 根节点，帮助客户端发现网络；客户端需使用本项目生成的 `planet` 文件 |
-| Moon | 部署时会把本节点同时配置为 moon，并在 `dist` 目录生成 `.moon` 文件，供其他节点按需使用 |
-| Controller / Web 管理界面 | 创建网络、授权成员并管理地址分配 |
-| 文件下载服务 | 提供生成文件的下载入口；下载密钥需要妥善保存 |
-
-ZeroTier 会尝试让节点直接通信；是否能够直连仍取决于双方网络、NAT 和防火墙环境。自建 Planet 不能替代端到端连通性排查。
-
-## 客户端接入
-
-**通用流程：**在客户端安装 ZeroTier → 备份原有 `planet`（如果存在）→ 放入服务器生成的新文件 → 重启 ZeroTier 服务 → 加入创建的 Network ID → 在管理界面授权设备 → 检查分配地址和连接状态。
-
-下面命令中的 `0123456789abcdef` 仅作为 **Network ID 示例**，执行时请替换为自己创建的 ID。不同发行版或客户端版本的安装路径可能不同，请以实际安装位置为准。
-
-### Windows
-
-1. 安装 [ZeroTier One 客户端](https://www.zerotier.com/download/)，将生成的 `planet` 放到 `C:\ProgramData\ZeroTier\One\planet`（`ProgramData` 默认隐藏）；覆盖前备份原文件。
-2. 在 Windows“服务”中重启 **ZeroTier One**，再在可调用 `zerotier-cli.bat` 的管理员终端加入网络：
-
-   ```powershell
-   zerotier-cli.bat join 0123456789abcdef
-   zerotier-cli.bat peers
-   ```
-
-3. 在管理界面的成员列表中勾选该设备的 **Authorized**，确认它获得虚拟 IP。`peers` 输出中可查看 Planet 和其他节点的连接状态；**Planet 为 DIRECT 不代表所有设备之间也都直连**。
-
-![Windows 服务管理](assets/restart_service.png)
-
-### Linux
-
-将 `planet` 备份并复制到 ZeroTier 数据目录（通常是 `/var/lib/zerotier-one/planet`），重启服务，然后加入网络：
+### 首次登录
 
 ```bash
-sudo cp planet /var/lib/zerotier-one/planet
-sudo systemctl restart zerotier-one
-sudo zerotier-cli join 0123456789abcdef
-sudo zerotier-cli peers
+sudo cat data/config/admin-password
 ```
 
-覆盖前请先备份目标路径已有的文件；如果系统没有使用 systemd，请使用该系统对应的服务管理命令。最后回到管理界面授权该设备。
+打开 `https://<公网IP>:3443`，浏览器会提示自签证书，确认后使用
+`admin` + 上述密码登录。系统会立即要求设置新密码；改密成功后
+`admin-password` 文件会被删除。
 
-### macOS
+### 分发 planet
 
-将 `planet` 备份并放入 `/Library/Application Support/ZeroTier/One/`，重启 ZeroTier One 后加入网络，并在管理界面授权。路径中包含空格；使用终端操作时需要正确引用路径。服务重启方式以当前安装版本为准。
+最安全、最简单的方式是直接从宿主机复制（不需要下载密钥）：
 
-### OpenWrt
+```bash
+cp data/dist/planet ./planet
+```
 
-先确认所安装的 ZeroTier 插件是否支持自定义 `planet`，以及它实际使用的数据目录。部分插件使用 `/etc/config/zero/planet`；放入文件后在 OpenWrt 管理界面重启 ZeroTier，再加入网络并授权设备。**不要在未核实目录的情况下直接创建或覆盖系统软链接。**
+或通过文件服务器下载（密钥在 `data/config/file_server.key`）：
 
-### Android 与 iOS
+```bash
+curl -fsS \
+  -H "Authorization: Bearer $(sudo cat data/config/file_server.key)" \
+  https://<公网IP>:3000/planet -o planet
+```
 
-- **Android：**可参考支持自定义 Planet 的第三方客户端 [ZerotierFix](https://github.com/kaaass/ZerotierFix)，使用前请自行检查其版本兼容性及维护状态。
-- **iOS：**替换 `planet` 需要客户端或系统提供相应能力；可了解 [ZeroTieriOSFix](https://github.com/lemon4ex/ZeroTieriOSFix) 等非官方方案，其适用条件和风险由使用者自行评估。**WireGuard 是另一种协议，不能直接作为 ZeroTier 客户端加入本项目创建的网络。**
+把 `planet` 放到客户端的数据目录并重启 ZeroTier：
 
-## 运维与安全
-
-### 数据目录与备份
-
-部署脚本将以下宿主机目录挂载进容器；备份时应保留整个 `data/zerotier/`，而不只是 `planet` 文件：
-
-| 宿主机路径 | 用途 |
+| 系统 | 路径 |
 | --- | --- |
-| `data/zerotier/dist/` | 导出的 `planet` / `moon` 文件 |
-| `data/zerotier/ztncui/` | 管理界面配置与登录数据 |
-| `data/zerotier/one/` | ZeroTier 身份与控制器数据 |
-| `data/zerotier/config/` | 生成 Planet 所需的配置和密钥 |
+| Linux | `/var/lib/zerotier-one/planet` |
+| Windows | `C:\ProgramData\ZeroTier\One\planet` |
+| macOS | `/Library/Application Support/ZeroTier/One/planet` |
+| Android/iOS | 使用支持自定义 planet 的客户端导入 |
 
-**更新前先备份。**运行 `./deploy.sh` 并选择“更新”会保留已挂载的数据，但会重建容器；选择重新“安装”前要特别注意数据清理提示，不能把它当作无损升级。部署脚本在数据目录已有内容时不会自动重新生成 `planet` / `moon`；**只修改 IP 或端口环境变量，不会更新已生成的节点信息和客户端文件。**
+重启后执行 `zerotier-cli listpeers`，应能看到你的 planet 节点，而不是官方 planet。
 
-### 保护管理界面和下载入口
+### 使用 moon（可选）
 
-- 首次登录立即修改默认密码；管理界面默认使用 `http://`，`3443` 只是端口号，**不表示已启用 TLS**。
-- 使用防火墙限制管理端口的访问来源；对外提供管理界面时，建议由 Nginx 等反向代理终止 HTTPS。
-- 下载链接和相关密钥不要公开传播。文件服务使用 `SECRET_KEY` 作为下载密钥；如果没有固定该值，容器重启后会生成新密钥，旧下载链接随之失效。镜像中的 `FILE_KEY` **不是**文件服务实际读取的变量。
+`data/dist/` 下同时生成 `<moon-id>.moon`。将 moon 文件复制到客户端的
+`moons.d/`，然后：
 
-以下示例假设 Nginx 与容器运行在同一台主机，证书已自行准备，且 `3443` 是实际映射的管理端口。还应通过防火墙限制对 `3443` 的直接公网访问：
-
-```nginx
-server {
-    listen 80;
-    server_name planet.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name planet.example.com;
-
-    ssl_certificate /path/to/fullchain.pem;
-    ssl_certificate_key /path/to/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-
-    location / {
-        proxy_pass http://127.0.0.1:3443;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
+```bash
+zerotier-cli orbit <moon-id> <moon-id>
 ```
 
-### 使用 Docker Compose（手动方式）
+### 创建网络并加入
 
-仓库**没有附带** `compose.yaml`。如果不使用交互式部署脚本，可将以下示例保存为 `compose.yaml`，填入自己的公网 IPv4 和足够长的随机 `SECRET_KEY` 后，在该文件所在目录运行 `docker compose up -d`：
+1. 在 ztncui 的 **Networks → Add network** 创建网络，记下 16 位 network ID。
+2. 客户端执行 `zerotier-cli join <network-id>`。
+3. 回到 ztncui 勾选成员授权（Auth），必要时设置 IP、路由、规则。
+4. 客户端 `zerotier-cli listnetworks` 应为 `OK PRIVATE`。
 
-```yaml
-services:
-  myztplanet:
-    image: xubiaolin/zerotier-planet:latest
-    container_name: myztplanet
-    restart: unless-stopped
-    ports:
-      - "9994:9994/tcp"
-      - "9994:9994/udp"
-      - "3443:3443/tcp"
-      - "3000:3000/tcp"
-    environment:
-      IP_ADDR4: "203.0.113.10" # 替换为服务器公网 IPv4
-      IP_ADDR6: "" # 留空时容器仍会尝试自动获取公网 IPv6
-      ZT_PORT: "9994"
-      API_PORT: "3443"
-      FILE_SERVER_PORT: "3000"
-      SECRET_KEY: "replace-with-a-long-random-secret"
-    volumes:
-      - ./data/zerotier/dist:/app/dist
-      - ./data/zerotier/ztncui:/app/ztncui
-      - ./data/zerotier/one:/var/lib/zerotier-one
-      - ./data/zerotier/config:/app/config
+## 配置
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `IP_ADDR4` | 自动探测内网 IPv4 | **必须设为客户端可达的公网 IPv4 或域名**；写入 moon/planet |
+| `IP_ADDR6` | 空 | 可选公网 IPv6 |
+| `ZT_PORT` | `9994` | ZeroTier UDP 端口（容器内固定 9994） |
+| `API_PORT` | `3443` | ztncui HTTPS 端口（容器内固定 3443） |
+| `FILE_SERVER_PORT` | `3000` | planet 下载端口（容器内固定 3000） |
+| `TLS_ENABLED` | `1` | `0` 关闭 TLS（**不推荐**，凭据会明文传输） |
+| `TLS_CERT` / `TLS_KEY` | 自签证书 | 挂载自有证书的容器内路径 |
+| `FILE_KEY` | 自动生成 | 至少 32 字符；设置后覆盖 key 文件 |
+| `ALLOW_QUERY_KEY` | `0` | 允许旧的 `?key=` 下载方式 |
+| `REGENERATE_PLANET` | `1` | 每次启动重新生成 planet（身份不变） |
+| `APP_UID` / `APP_GID` | `1000` | 运行服务的 uid/gid |
+| `HTTPS_HOST` | `0.0.0.0` | 设为 `::` 可同时监听 IPv6 |
+| `TRUST_PROXY` | 空 | 反向代理层数，如 `1`；启用后按 `X-Forwarded-For` 限流 |
+
+端口通过 `docker run -p` / Compose 映射；容器内部端口固定，便于文档与健康检查。
+
+### 使用自有证书
+
+```bash
+mkdir -p data/config/tls
+cp fullchain.pem data/config/tls/fullchain.pem
+cp privkey.pem   data/config/tls/privkey.pem
+docker compose restart
 ```
 
-> 示例端口与容器环境变量保持一致；如果修改监听端口，请同步修改映射和防火墙规则。**不要把填有真实公网 IP、下载密钥或私密配置的 Compose 文件提交到公开仓库。**手动 Compose 部署不提供 `deploy.sh` 的交互流程，遇到问题请检查 `docker logs myztplanet`。
+证书需包含 `IP:<公网IP>` 或客户端使用的域名 SAN。若用 Nginx/Caddy 反代，
+建议只暴露反代端口，并设置 `TRUST_PROXY=1`；此时可把 `API_PORT`/`FILE_SERVER_PORT`
+映射到 `127.0.0.1`。
 
-### 卸载
+### 数据与备份
 
-在项目目录运行 `./deploy.sh`，根据菜单提示选择“卸载”。若手动管理容器，可执行 `docker rm -f myztplanet`；**这只删除容器，不等于清除宿主机的 `data/zerotier/` 数据**。删除数据前请先核实目录内容并完成备份。
+| 路径 | 内容 |
+| --- | --- |
+| `data/one/` | ZeroTier 身份、controller 数据库、authtoken、moon |
+| `data/config/` | ztncui 密码库、session secret、TLS 证书、下载密钥、初始密码 |
+| `data/dist/` | 可公开分发的 `planet` 与 `.moon` |
 
-## 常见问题
+**`data/one/identity.secret` 是 planet 的根身份**，丢失后所有客户端必须更换 planet；
+请离线备份 `data/one/` 与 `data/config/`（其中含密钥，注意加密保存）。
+升级镜像不会修改这些卷。
 
-### 为什么无法连接自建 Planet？
+## 从上游版本迁移
 
-先核对客户端是否使用**当前部署生成的** `planet` 并已重启 ZeroTier；再检查服务器公网 IP，以及 `9994/tcp`、`9994/udp` 的容器端口映射、服务器防火墙和云平台安全组。自定义过端口时，以实际配置为准。
+1. 停止旧容器并备份旧数据目录。
+2. 新容器只需要三个卷：`config`、`dist`、`one`（旧布局中的 `zerotier-one` 对应新 `one`）。
+3. **不要**再挂载 `/app/ztncui`；应用目录已改为不可变，挂载会阻止安全更新生效。
+4. 旧 ztncui 密码库位于 `ztncui/src/etc/passwd`，新版本默认读取
+   `config/ztncui-passwd`。可把旧文件复制过去并设置 `ZTNCUI_PASSWD`，或直接删除
+   `config/ztncui-passwd` 与 `config/admin-password` 让容器重新生成管理员。
+5. 若保留旧 `one/`，entrypoint 会复用 `identity.secret` 并重新生成 planet，
+   客户端 planet 的 ID 不变。
 
-### 已加入网络，为什么仍 ping 不通其他设备？
+## 本地构建与测试
 
-确认两端都已加入**同一个 Network ID**、在管理界面获得授权并分配了地址；随后检查目标设备操作系统防火墙是否允许 ICMP 和所需业务端口。不能仅凭 `join OK` 判断网络已经可用。
+```bash
+# 本地单架构构建
+./build.sh
 
-### 如何判断直连还是中转？
+# 多架构构建并推送（需先 docker login）
+PUSH=1 IMAGE=ghcr.io/<你>/docker-zerotier-planet:latest ./build.sh
 
-在客户端运行 `zerotier-cli peers`，查看目标节点对应的连接状态。`DIRECT` 表示该条连接直连，`RELAY` 表示该条连接经中转；连接到 Planet 为 `DIRECT` 并不保证到其他 LEAF 也直连。
+# 测试
+cd patch/ztncui && npm ci --omit=dev --ignore-scripts
+./tests/http-server.test.sh
+```
 
-### 为什么看不到 ZeroTier 官方 Planet？
+仓库提供 `tests/http-server.test.sh` 做文件服务器安全回归测试；CI 工作流需由仓库所有者
+自行添加（GitHub OAuth App 推送 workflow 文件需要额外的 `workflow` scope）。
 
-客户端替换为本项目生成的 `planet` 后，根节点列表指向自建 Planet，不会同时显示官方 Planet。请确认使用该文件是你的预期操作。
+## 安全模型与限制
 
-### 服务器公网 IP 或通信端口变了怎么办？
+- 这是**单节点** controller，不提供 HA；controller 数据库就是 `data/one/controller.d`。
+- 会话保存在内存中，容器重启后需要重新登录（不会持久化会话密钥到浏览器）。
+- 自签证书只提供传输加密，不提供身份认证；生产环境建议使用受信任证书或反代。
+- 管理界面应只对可信网络开放；不要直接把 3443 暴露到整个互联网而不设强密码。
+- 容器内没有 `NET_ADMIN` 时 ZeroTier 不能创建 TUN，但 controller/planet 功能正常；
+  仅当你要让容器本身作为 leaf 加入网络时才需要额外 capability。
+- 本镜像的 controller 受 ZeroTier 非商业许可证约束；商业使用请购买授权或改用官方 controller。
+- 本项目不托管任何中继/根服务器；planet 的可用性取决于你的主机与网络。
 
-备份整个 `data/zerotier/` 后重新规划部署，并生成与新地址相符的 `planet` 文件，然后重新分发给客户端。已有数据非空时，**仅重启容器或改环境变量不会重生成文件**；重新安装可能删除旧数据和身份，操作前务必备份。
+## 故障排查
 
-### 忘记管理密码怎么办？
+- **客户端仍连官方 planet**：确认 planet 文件路径正确并已重启服务；`zerotier-cli listpeers`
+  中应出现你的公网 IP；检查 UDP 9994 是否被防火墙/NAT 阻断。
+- **管理界面 401/无法登录**：确认 `data/config/admin-password` 是否存在；删除
+  `data/config/ztncui-passwd` 与 `admin-password` 后重启可重置（会丢失已建管理员）。
+- **容器反复重启**：`docker logs <容器名>`；常见原因是公网 IP 未设置、端口占用、
+  卷权限不是 uid 1000，或证书不可读。
+- **浏览器证书错误**：自签证书属预期；导入证书或改用受信任证书。
+- **下载 401**：使用 `Authorization: Bearer <key>`，不要再用 `?key=`；或直接从
+  `data/dist/planet` 复制。
 
-在项目目录运行 `./deploy.sh`，选择菜单中的“重置密码”。脚本会将管理界面密码恢复为默认值 `password` 并重启容器；登录后立即更换密码。不要为重置密码删除 `data/zerotier/`，其中还保存着节点和网络数据。
+## 许可证
 
-### 支持域名或 ARM 服务器吗？
+- 本项目原创代码：GPL-3.0-only，见 [LICENSE](LICENSE)。
+- ztncui：GPL-3.0，见其仓库。
+- ZeroTier One 核心：MPL-2.0；`nonfree/controller`：ZeroTier SOURCE-AVAILABLE
+  LICENSE（仅非商业），见 [NOTICE](NOTICE)。
 
-管理界面可以通过域名与反向代理访问；Planet 生成逻辑使用 `IP_ADDR4` / `IP_ADDR6` 填写节点地址，不能简单用域名替代 IP。镜像构建脚本包含 `linux/arm64` 和 `linux/amd64`，使用前请确认所拉取的镜像包含对应架构。
-
-### PVE LXC 容器内没有创建虚拟网卡怎么办？
-
-ZeroTier 需要访问 TUN 设备。请按当前 Proxmox / LXC 版本核对容器的 TUN 设备映射、权限和网络配置；修改特权模式或放宽设备权限会改变安全边界，不建议在不了解影响时直接套用旧版配置片段。
-
-## 项目与社区
-
-### 开发计划
-
-- [ ] 多 Planet 支持
-- [x] 自定义管理界面端口
-- [ ] Planet 与 Controller 分离部署
-
-### 风险声明
-
-本项目用于学习和研究。自行部署需要维护服务器、凭据和客户端配置；请评估安全与可用性风险，并遵守适用的法律及服务条款。项目维护者不对使用本项目产生的损失承担责任。
-
-### 致谢
-
-感谢以下支持项目的朋友（按原名单顺序）：
-
-随性、我、你好、Calvin、小猪猪的饲养员、情若犹在、天天星期天、啊乐、夏末秋至、\*\*忠、岸芷汀兰、Kimi Chen、匿名、阳光报告旷课、濂溪先生、Water、匿名、匿名、陆、精钢葫芦娃、唯、王小新、匿名、Duck不必。
-
-### 相关项目与参考资料
-
-- [WireGuard 一键脚本](https://github.com/xubiaolin/wireguard-onekey)
-- [ZeroTier 虚拟局域网详解](https://www.glimmer.ltd/2021/3299983056/)
-- [五分钟自建 ZeroTier 的 Planet / Controller](https://v2ex.com/t/799623)
+上游项目：<https://github.com/xubiaolin/docker-zerotier-planet>

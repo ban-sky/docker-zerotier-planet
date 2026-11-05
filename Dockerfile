@@ -1,85 +1,137 @@
-FROM alpine:3.14 as builder
+# syntax=docker/dockerfile:1.7
+#
+# Multi-stage build for a self-hosted ZeroTier planet + network controller.
+#
+# Licensing: ZeroTier One 1.16.x moved its controller to nonfree/ under the
+# ZeroTier SOURCE-AVAILABLE LICENSE (non-commercial use only). This image is
+# therefore built with ZT_NONFREE=1 and must not be used commercially.
+# See NOTICE and /usr/share/licenses/zerotier inside the image.
+#
+# GPLv3 - see LICENSE.
 
-ENV TZ=Asia/Shanghai
-ARG TAG=actions
-ENV TAG=${TAG}
+ARG NODE_VERSION=22-bookworm
+
+# ---------------------------------------------------------------------------
+# ZeroTier One + mkworld
+# ---------------------------------------------------------------------------
+FROM node:${NODE_VERSION} AS zt-builder
+
+ARG ZT_VERSION=1.16.2
+ARG ZT_COMMIT=fc5c3ec22090b5b2a0f274e863651fe9ca489bf4
+ARG GH_MIRROR=https://github.com
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 --branch "${ZT_VERSION}" \
+      "${GH_MIRROR}/zerotier/ZeroTierOne.git" zerotier \
+ && test "$(git -C zerotier rev-parse HEAD)" = "${ZT_COMMIT}"
+
+COPY patch/mkworld_custom.cpp /src/mkworld_custom.cpp
+
+RUN cd zerotier \
+ && make -j"$(nproc)" ZT_NONFREE=1 ZT_SSO_SUPPORTED=0 \
+ && mkdir -p /out/usr/sbin /out/licenses \
+ && cp zerotier-one /out/usr/sbin/ \
+ && ln -sf zerotier-one /out/usr/sbin/zerotier-cli \
+ && ln -sf zerotier-one /out/usr/sbin/zerotier-idtool \
+ && g++ -std=c++17 -O2 -I. -Iext -o /out/mkworld /src/mkworld_custom.cpp \
+      node/ECC.cpp node/Identity.cpp node/InetAddress.cpp node/SHA512.cpp \
+      node/Salsa20.cpp node/Utils.cpp osdep/OSUtils.cpp \
+      -pthread -ldl -lrt -lm \
+ && cp LICENSE.txt LICENSE-MPL.txt nonfree/LICENSE.md /out/licenses/
+
+# ---------------------------------------------------------------------------
+# ztncui (pinned commit, hardened overlay, WASM Argon2)
+# ---------------------------------------------------------------------------
+FROM node:${NODE_VERSION} AS ui-builder
+
+ARG ZTNCUI_COMMIT=1b2284864de48d2dcae22582fff122fe24909c3d
+ARG GH_MIRROR=https://github.com
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git init ztncui \
+ && cd ztncui \
+ && git remote add origin "${GH_MIRROR}/key-networks/ztncui.git" \
+ && git fetch --depth 1 origin "${ZTNCUI_COMMIT}" \
+ && git checkout --detach FETCH_HEAD \
+ && test "$(git rev-parse HEAD)" = "${ZTNCUI_COMMIT}"
+
+WORKDIR /src/ztncui/src
+
+# Install from the committed lockfile before copying the overlay so that the
+# dependency layer is cached and the install is reproducible.
+COPY patch/ztncui/package.json patch/ztncui/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+COPY patch/ztncui-networkController.patch /tmp/ztncui-networkController.patch
+COPY patch/ztncui/ /tmp/ztncui-patch/
+RUN cd /src/ztncui \
+ && git apply /tmp/ztncui-networkController.patch \
+ && cp /tmp/ztncui-patch/app.js ./src/app.js \
+ && cp /tmp/ztncui-patch/bin-www ./src/bin/www \
+ && cp /tmp/ztncui-patch/auth.js ./src/controllers/auth.js \
+ && cp /tmp/ztncui-patch/usersController.js ./src/controllers/usersController.js \
+ && cp /tmp/ztncui-patch/argon2-wasm.js ./src/argon2-wasm.js \
+ && cp /tmp/ztncui-patch/routes-index.js ./src/routes/index.js \
+ && cp /tmp/ztncui-patch/routes-users.js ./src/routes/users.js \
+ && mkdir -p ./src/tools \
+ && cp /tmp/ztncui-patch/tools/init-admin.js ./src/tools/init-admin.js \
+ && chmod 755 ./src/bin/www ./src/tools/init-admin.js \
+ && rm -rf .git
+
+# ---------------------------------------------------------------------------
+# Runtime
+# ---------------------------------------------------------------------------
+FROM node:${NODE_VERSION}-slim AS runtime
+
+LABEL org.opencontainers.image.title="docker-zerotier-planet" \
+      org.opencontainers.image.description="Self-hosted ZeroTier planet and controller with TLS and hardened defaults" \
+      org.opencontainers.image.source="https://github.com/ban-sky/docker-zerotier-planet" \
+      org.opencontainers.image.licenses="GPL-3.0-only AND MPL-2.0 AND LicenseRef-ZeroTier-Source-Available"
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl openssl tini tzdata util-linux \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-ADD ./patch/entrypoint.sh /app/entrypoint.sh
-ADD ./patch/http_server.js /app/http_server.js
-ADD ./patch/mkworld_custom.cpp /app/patch/mkworld_custom.cpp
 
-# init tool
-RUN set -x\
-    && apk update\
-    && apk add --no-cache git python3 npm make g++ linux-headers curl pkgconfig openssl-dev jq build-base gcc cmake go \
-    && echo "env prepare success!"
+COPY --from=zt-builder /out/usr/sbin/ /usr/sbin/
+COPY --from=zt-builder /out/mkworld /app/mkworld
+COPY --from=zt-builder /out/licenses/ /usr/share/licenses/zerotier/
+COPY --from=ui-builder /src/ztncui /app/ztncui
+COPY patch/entrypoint.sh /app/entrypoint.sh
+COPY patch/http_server.js /app/http_server.js
+COPY patch/configure-moon.js /app/configure-moon.js
+COPY LICENSE /usr/share/licenses/docker-zerotier-planet/LICENSE
+COPY NOTICE /usr/share/licenses/docker-zerotier-planet/NOTICE
 
-# make zerotier-one
-RUN set -x\
-    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\
-    && source "$HOME/.cargo/env"\
-    && git clone https://github.com/zerotier/ZeroTierOne.git\
-    && cd ZeroTierOne\
-    && git checkout ${TAG}\
-    && echo "切换到tag:${TAG}"\
-    && make ZT_SYMLINK=1 \
-    && make -j\
-    && make install\
-    && echo "make success!"\
-    && zerotier-one -d || true\
-    && sleep 5s\
-    && (ps -ef |grep zerotier-one |grep -v grep |awk '{print $1}' |xargs kill -9 || true)\
-    && echo "zerotier-one init success!"\
-    && cd /app/ZeroTierOne/attic/world \
-    && cp /app/patch/mkworld_custom.cpp .\
-    && mv mkworld.cpp mkworld.cpp.bak \
-    && mv mkworld_custom.cpp mkworld.cpp \
-    && sh build.sh \
-    && mkdir -p /var/lib/zerotier-one \
-    && mv mkworld /var/lib/zerotier-one\
-    && echo "mkworld build success!"
+# The CLI lives in /usr/sbin; these links match what `make install` creates and
+# let users run `docker exec ... zerotier-cli` (#196).
+RUN ln -sf ../../../usr/sbin/zerotier-one /var/lib/zerotier-one/zerotier-one \
+ && ln -sf ../../../usr/sbin/zerotier-one /var/lib/zerotier-one/zerotier-cli \
+ && ln -sf ../../../usr/sbin/zerotier-one /var/lib/zerotier-one/zerotier-idtool \
+ && chmod 755 /app/entrypoint.sh /app/http_server.js /app/configure-moon.js /app/mkworld \
+ && mkdir -p /app/config /app/dist /var/lib/zerotier-one/moons.d \
+ && chown -R node:node /app/config /app/dist /var/lib/zerotier-one
 
+EXPOSE 9994/udp 3443/tcp 3000/tcp
+VOLUME ["/app/config", "/app/dist", "/var/lib/zerotier-one"]
 
+# The entrypoint starts as root only to fix volume ownership, then drops to
+# uid/gid 1000 for zerotier-one, ztncui and the file server.
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
+STOPSIGNAL SIGTERM
 
-#make ztncui 
-RUN set -x \
-    && mkdir /app -p \
-    &&  cd /app \
-    && git clone --progress https://github.com/key-networks/ztncui.git\
-    && cd /app/ztncui/src \
-    && npm config set registry https://registry.npmmirror.com\
-    && npm install -g node-gyp\
-    && npm install 
-
-FROM alpine:3.14
-
-WORKDIR /app
-
-ENV IP_ADDR4=''
-ENV IP_ADDR6=''
-
-ENV ZT_PORT=9994
-ENV API_PORT=3443
-ENV FILE_SERVER_PORT=3000
-
-ENV GH_MIRROR="https://mirror.ghproxy.com/"
-ENV FILE_KEY=''
-ENV TZ=Asia/Shanghai
-
-COPY --from=builder /app/ztncui /bak/ztncui
-COPY --from=builder /var/lib/zerotier-one /bak/zerotier-one
-
-COPY --from=builder /app/ZeroTierOne/zerotier-one /usr/sbin/zerotier-one
-COPY --from=builder /app/entrypoint.sh /app/entrypoint.sh
-COPY --from=builder /app/http_server.js /app/http_server.js
-
-RUN set -x \
-    && apk update \
-    && apk add --no-cache npm curl jq openssl\
-    && mkdir /app/config -p 
-
-
-VOLUME [ "/app/dist","/app/ztncui","/var/lib/zerotier-one","/app/config"]
-
-CMD ["/bin/sh","/app/entrypoint.sh"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["/usr/sbin/zerotier-cli", "info"]
