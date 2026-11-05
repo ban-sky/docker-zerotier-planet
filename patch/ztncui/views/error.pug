@@ -1,0 +1,11 @@
+extends controller_layout
+
+block content
+  .error-page
+    p.eyebrow Error
+    h1= message || 'Something went wrong'
+    if error && error.status
+      p.error-code= 'HTTP ' + error.status
+    if error && error.stack
+      pre.error-stack= error.stack
+    a.btn.btn-ghost(href='/controller') Back to overview

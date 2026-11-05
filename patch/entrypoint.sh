@@ -60,7 +60,7 @@ as_app() {
   fi
 }
 
-mkdir -p "$CONFIG_DIR" "$DIST_DIR" "$ZT_HOME" "$ZT_HOME/moons.d" "$CONFIG_DIR/tls"
+mkdir -p "$CONFIG_DIR" "$DIST_DIR" "$ZT_HOME" "$ZT_HOME/moons.d" "$CONFIG_DIR/tls" "$CONFIG_DIR/ztncui-storage"
 if [ "$RUN_AS_ROOT" -eq 1 ]; then
   chown -R "$APP_UID:$APP_GID" "$CONFIG_DIR" "$DIST_DIR" "$ZT_HOME"
 fi
@@ -220,6 +220,7 @@ as_app env \
   TLS_KEY="$TLS_KEY" \
   SESSION_SECRET="$SESSION_SECRET" \
   ZTNCUI_PASSWD="$CONFIG_DIR/ztncui-passwd" \
+  ZTNCUI_STORAGE="$CONFIG_DIR/ztncui-storage" \
   ZTNCUI_ADMIN_PASSWORD_FILE="$CONFIG_DIR/admin-password" \
   node "$ZTNCUI_DIR/bin/www" &
 UI_PID=$!

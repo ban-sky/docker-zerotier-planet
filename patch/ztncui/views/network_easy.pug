@@ -1,0 +1,41 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  if message
+    .alert.alert-success= message
+
+  - const routes = (network && network.routes) || []
+  - const pools = (network && network.ipAssignmentPools) || []
+
+  .card.form-card
+    h2 Easy setup
+    p.card-subtitle Configure a private IPv4 range, an assignment pool and the managed route in one step. IPv4 only.
+
+    form#easy-form.form-stack(method='POST', action='')
+      .field
+        label(for='networkCIDR') Network address (CIDR)
+        .input-row
+          input#networkCIDR(type='text', name='networkCIDR', placeholder='10.42.0.0/24', value=(routes[0] ? routes[0].target : ''), required)
+          button.btn.btn-ghost(type='button', data-random-cidr) Generate
+        p.field-hint A random RFC1918 /24 is used when you press Generate.
+      .field-row
+        .field
+          label(for='poolStart') Pool start
+          input#poolStart(type='text', name='poolStart', placeholder='10.42.0.1', value=(pools[0] ? pools[0].ipRangeStart : ''), required)
+        .field
+          label(for='poolEnd') Pool end
+          input#poolEnd(type='text', name='poolEnd', placeholder='10.42.0.254', value=(pools[0] ? pools[0].ipRangeEnd : ''), required)
+      .form-actions
+        button.btn.btn-primary(type='submit') Apply setup
+        a.btn.btn-ghost(href='/controller/network/' + network.nwid) Cancel
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

@@ -46,6 +46,14 @@ upstream project.
 - No `set -x`: authtoken, controller token and download keys never appear in logs.
 - ztncui: CSP, HSTS, SameSite/HttpOnly/Secure cookies, same-origin Origin/Referer checks, login throttling, open-redirect fix, prototype-chain username DoS fix, session fixation fix, and error pages without stack traces.
 - Native `argon2` replaced by pure-WASM `hash-wasm` (no node-gyp) with Argon2id (64 MiB).
+- ztncui frontend and dependency stack rewritten (0.9.0): Bootstrap 3, jQuery, got,
+  ip-address and express-validator are gone. IP/CIDR checks use `node:net`,
+  controller calls use Node 24's native `fetch`, and network creation uses the
+  1.16 `POST /controller/network` API. `npm audit --omit=dev` reported zero
+  advisories on 2026-11-06.
+- The UI is a responsive card/table layout with no inline scripts or styles
+  (CSP allows `'self'` only). Member authorization/bridging uses explicit
+  selects and keeps the strict boolean semantics from the #208 fix.
 - Atomic 0600 password writes; existing passwords can only be changed by their owner; an admin can initialize a newly created user; the last admin cannot be deleted.
 - Compose defaults to `read_only`, `no-new-privileges` and a `tmpfs` `/tmp`.
 - `SECURITY.md`, a disclosure process, dependency lockfiles and regression tests.
@@ -214,10 +222,13 @@ PUSH=1 IMAGE=ghcr.io/<you>/docker-zerotier-planet:latest ./build.sh
 
 # tests
 cd patch/ztncui && npm ci --omit=dev --ignore-scripts
+cd ../..
 ./tests/http-server.test.sh
+node tests/ztncui-views.test.js
 ```
 
-`tests/http-server.test.sh` contains the file-server security regression tests. Add a CI
+`tests/http-server.test.sh` contains file-server security regression tests, and
+`tests/ztncui-views.test.js` compiles every Pug view. Add a CI
 workflow yourself if desired: pushing workflow files with a GitHub OAuth App requires the
 additional `workflow` scope.
 

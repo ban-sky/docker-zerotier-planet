@@ -43,6 +43,12 @@
 - ztncui：CSP、HSTS、SameSite/HttpOnly/Secure Cookie、同源 Origin/Referer 校验、
   登录限流、开放重定向修复、原型链用户名 DoS 修复、会话固定修复、错误页不泄漏堆栈。
 - 原生 `argon2` 改为纯 WASM `hash-wasm`，无需 node-gyp，并统一使用 Argon2id（64 MiB）。
+- ztncui 前端与依赖整体重写（0.9.0）：移除 Bootstrap 3 / jQuery / got / ip-address /
+  express-validator，改用 `node:net` 实现 IP/CIDR 校验、Node 24 原生 `fetch` 调用
+  controller API，并适配 1.16 的 `POST /controller/network`；生产依赖 `npm audit`
+  在 2026-11-06 为 0 告警。
+- 管理界面重做为响应式卡片/表格布局，无内联脚本与样式（CSP 只允许 `'self'`），
+  成员授权/桥接改为显式下拉框，保持 #208 的严格布尔语义。
 - 密码文件原子写入、0600；已设置密码的账户只能由本人修改；管理员可为新建用户设置初始密码；不能删除自己或最后一个管理员。
 - `docker-compose.yml` 默认 `read_only`、`no-new-privileges`、`tmpfs /tmp`。
 - 增加 `SECURITY.md`、漏洞披露流程、依赖锁定和回归测试。
@@ -203,10 +209,13 @@ PUSH=1 IMAGE=ghcr.io/<你>/docker-zerotier-planet:latest ./build.sh
 
 # 测试
 cd patch/ztncui && npm ci --omit=dev --ignore-scripts
+cd ../..
 ./tests/http-server.test.sh
+node tests/ztncui-views.test.js
 ```
 
-仓库提供 `tests/http-server.test.sh` 做文件服务器安全回归测试；CI 工作流需由仓库所有者
+仓库提供 `tests/http-server.test.sh`（文件服务器安全回归）与 `tests/ztncui-views.test.js`
+（全部 Pug 视图编译）；CI 工作流需由仓库所有者
 自行添加（GitHub OAuth App 推送 workflow 文件需要额外的 `workflow` scope）。
 
 ## 安全模型与限制

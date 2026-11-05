@@ -1,0 +1,52 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+  - const dns = network.dns || {}
+  - const servers = dns.servers || []
+
+  .card
+    .card-head
+      div
+        h2 DNS
+        p.card-subtitle Optional split-DNS settings pushed to authorised members.
+      a.btn.btn-sm.btn-ghost(href=nwurl) Network
+
+    if !dns.domain && servers.length === 0
+      p.empty-inline No DNS configuration on this network.
+    else
+      dl.detail-list
+        .detail-row
+          dt Domain
+          dd.mono= dns.domain || '—'
+        .detail-row
+          dt Servers
+          dd
+            if servers.length
+              each server in servers
+                span.chip.mono= server
+            else
+              span.muted —
+
+    form.form-stack(method='POST', action='')
+      .field
+        label(for='domain') Domain
+        input#domain(type='text', name='domain', value=dns.domain || '', placeholder='lab.example.com', maxlength='255')
+      .field
+        label(for='servers') DNS servers
+        textarea#servers(name='servers', rows='4', placeholder='One IP address per line')= servers.join('\n')
+        p.field-hint IPv4 and IPv6 addresses are accepted; invalid lines are ignored.
+      .form-actions
+        button.btn.btn-primary(type='submit') Save DNS
+        a.btn.btn-ghost(href=nwurl) Cancel
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

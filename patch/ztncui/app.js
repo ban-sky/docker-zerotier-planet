@@ -9,13 +9,12 @@
 const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
-const favicon = require('serve-favicon');
 const logger = require('morgan');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
-const expressValidator = require('express-validator');
 const session = require('express-session');
 const helmet = require('helmet');
+const validate = require('./validate');
 
 const index = require('./routes/index');
 const users = require('./routes/users');
@@ -106,9 +105,9 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      // ztncui ships small inline jQuery snippets in its Pug views.
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      // No inline scripts/styles: all behaviour lives in /js/app.js.
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'"],
       imgSrc: ["'self'", 'data:'],
       fontSrc: ["'self'"],
       connectSrc: ["'self'"],
@@ -126,7 +125,6 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
   next();
 });
-app.use(favicon(path.join(__dirname, 'public', 'favicon.ico')));
 app.use(logger(isProduction ? 'combined' : 'dev'));
 
 /*
@@ -167,44 +165,18 @@ app.use(session({
     maxAge: 8 * 60 * 60 * 1000
   }
 }));
-app.use(expressValidator());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/fonts', express.static(path.join(__dirname, 'node_modules/bootstrap/fonts')));
-app.use('/bscss', express.static(path.join(__dirname, 'node_modules/bootstrap/dist/css')));
-app.use('/jqjs', express.static(path.join(__dirname, 'node_modules/jquery/dist')));
-app.use('/bsjs', express.static(path.join(__dirname, 'node_modules/bootstrap/dist/js')));
+app.use(validate);
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: isProduction ? '1h' : 0 }));
 
 app.use('/', index);
 app.use('/users', users);
 app.use('/controller', zt_controller);
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[c]);
-}
-
-// flash messages
-app.use(function(req, res, next) {
-  const err = req.session && req.session.error;
-  const msg = req.session && req.session.success;
-  if (req.session) {
-    delete req.session.error;
-    delete req.session.success;
-  }
-  res.locals.message = '';
-  if (err) res.locals.message = '<p class="msg error">' + escapeHtml(err) + '</p>';
-  if (msg) res.locals.message = '<p class="msg success">' + escapeHtml(msg) + '</p>';
-  next();
-});
-
 // catch 404
 app.use(function(req, res) {
   res.status(404).render('error', {
+    title: 'Not found',
+    navigate: { active: '' },
     message: 'Not found',
     error: isProduction ? {} : { status: 404, stack: '' }
   });
@@ -217,6 +189,8 @@ app.use(function(err, req, res, next) {
   if (status >= 500) console.error(err && err.stack ? err.stack : err);
   res.status(status);
   res.render('error', {
+    title: 'Error',
+    navigate: { active: '' },
     message: status >= 500 ? 'Internal server error' : 'Request error',
     error: isProduction ? {} : { status, stack: err.stack || '' }
   });

@@ -1,0 +1,23 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends controller_layout
+
+block content
+  if error
+    .alert.alert-error= error
+    a.btn.btn-ghost(href='/controller/networks') Back to networks
+  else if !network
+    .alert.alert-error Network details are unavailable.
+    a.btn.btn-ghost(href='/controller/networks') Back to networks
+  else
+    .page-head
+      div
+        p.eyebrow Network
+        h1
+          a(href='/controller/network/' + network.nwid)= network.name
+          span.mono.page-id= network.nwid
+      a.btn.btn-ghost(href=navigate.whence || '/controller/networks') Back
+    block net_content

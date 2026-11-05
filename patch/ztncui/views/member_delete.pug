@@ -1,0 +1,31 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+
+  if member.deleted
+    .alert.alert-success
+      strong= (member.name || member.id) + ' was removed from the network.'
+    a.btn.btn-ghost(href=nwurl + '#members') Back to members
+  else
+    .card.form-card
+      h2 Remove member
+      p.card-subtitle
+        strong= member.name || member.id
+        |  (#{member.id}) will lose access until it joins again.
+      .alert.alert-warn Deleting a member does not revoke its identity; re-joining may recreate it.
+      form.form-stack(method='POST', action='')
+        .form-actions
+          button.btn.btn-danger(type='submit', name='delete', value='delete') Remove member
+          a.btn.btn-ghost(href=nwurl + '#members') Cancel
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

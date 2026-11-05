@@ -1,0 +1,30 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends controller_layout
+
+block content
+  .page-head
+    div
+      p.eyebrow Networks
+      h1 Create network
+    a.btn.btn-ghost(href='/controller/networks') Cancel
+
+  if error
+    .alert.alert-error= error
+
+  .card.form-card
+    form.form-stack(method='POST', action='')
+      .field
+        label(for='name') Network name
+        input#name(type='text', name='name', placeholder='e.g. home-lab', value=(typeof name === 'undefined' ? '' : name.name), maxlength='128', required, autofocus)
+        p.field-hint Shown in the controller UI. Members never see it.
+      button.btn.btn-primary(type='submit') Create network
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

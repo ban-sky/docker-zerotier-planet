@@ -1,0 +1,18 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends login_layout
+
+block login_content
+  p.eyebrow Self-hosted
+  h1.auth-title Your own ZeroTier planet.
+  p.auth-subtitle A private root server and network controller, running in one container. No third-party control plane.
+  .auth-actions
+    a.btn.btn-primary.btn-lg(href='/login') Sign in
+    a.btn.btn-ghost.btn-lg(href='https://www.zerotier.com/download/' target='_blank' rel='noopener noreferrer') Get a client
+  ul.auth-points
+    li Planet, moon and controller in one place
+    li TLS, Argon2id password hashing and header-based planet downloads
+    li ZeroTier 1.16.2 with a hardened admin UI

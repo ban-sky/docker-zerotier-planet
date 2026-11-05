@@ -1,0 +1,21 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  .card
+    h2 Not available in this UI
+    p
+      | Editing 
+      strong= title
+      |  is not implemented here.
+    if member !== undefined
+      p
+        a(href='/controller/network/' + network.nwid + '/member/' + (member.id || member.address)) Open member details
+    p
+      | Most member settings are available on the 
+      a(href='/controller/network/' + network.nwid + '#members') members page
+      | .

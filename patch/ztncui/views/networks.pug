@@ -1,0 +1,42 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends controller_layout
+
+block content
+  .page-head
+    div
+      p.eyebrow Controller
+      h1 Networks
+    a.btn.btn-primary(href='/controller/network/create') New network
+
+  if error
+    .alert.alert-error= error
+  else if !networks || networks.length === 0
+    .empty-state
+      h2 No networks yet
+      p Create a network to issue addresses and authorise members.
+      a.btn.btn-primary(href='/controller/network/create') Create the first network
+  else
+    .card.table-card
+      .table-wrap
+        table.data-table
+          thead
+            tr
+              th Network
+              th.mono Network ID
+              th Actions
+          tbody
+            each network in networks
+              - const nwurl = '/controller/network/' + network.nwid
+              tr
+                td
+                  a.row-title(href=nwurl)= network.name
+                td.mono= network.nwid
+                td.actions
+                  a.btn.btn-sm.btn-ghost(href=nwurl) Details
+                  a.btn.btn-sm.btn-ghost(href=nwurl + '/easy') Easy setup
+                  a.btn.btn-sm.btn-ghost(href=nwurl + '#members') Members
+                  a.btn.btn-sm.btn-danger(href=nwurl + '/delete', data-confirm='Delete this network and all of its members?') Delete

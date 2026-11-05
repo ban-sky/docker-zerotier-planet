@@ -1,0 +1,27 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+  - const memberId = member.id || member.address
+
+  .card
+    .card-head
+      div
+        h2= member.name || memberId
+        p.card-subtitle.mono= memberId
+      a.btn.btn-sm.btn-ghost(href=nwurl + '#members') Members
+
+    dl.detail-list
+      each value, key in member
+        .detail-row
+          dt
+            a(href=nwurl + '/member/' + memberId + '/' + key)= key
+          dd
+            +json_value(value)
+
+  a.btn.btn-ghost(href=nwurl + '#members') Back to members

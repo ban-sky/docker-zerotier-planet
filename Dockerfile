@@ -76,20 +76,25 @@ WORKDIR /src/ztncui/src
 COPY patch/ztncui/package.json patch/ztncui/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
-COPY patch/ztncui-networkController.patch /tmp/ztncui-networkController.patch
 COPY patch/ztncui/ /tmp/ztncui-patch/
 RUN cd /src/ztncui \
- && git apply /tmp/ztncui-networkController.patch \
  && cp /tmp/ztncui-patch/app.js ./src/app.js \
  && cp /tmp/ztncui-patch/bin-www ./src/bin/www \
  && cp /tmp/ztncui-patch/auth.js ./src/controllers/auth.js \
  && cp /tmp/ztncui-patch/usersController.js ./src/controllers/usersController.js \
+ && cp /tmp/ztncui-patch/networkController.js ./src/controllers/networkController.js \
  && cp /tmp/ztncui-patch/argon2-wasm.js ./src/argon2-wasm.js \
+ && cp /tmp/ztncui-patch/ip.js ./src/ip.js \
+ && cp /tmp/ztncui-patch/validate.js ./src/validate.js \
+ && cp /tmp/ztncui-patch/zt.js ./src/controllers/zt.js \
  && cp /tmp/ztncui-patch/routes-index.js ./src/routes/index.js \
  && cp /tmp/ztncui-patch/routes-users.js ./src/routes/users.js \
+ && rm -rf ./src/views ./src/public ./src/etc/storage \
+ && cp -a /tmp/ztncui-patch/views ./src/views \
+ && cp -a /tmp/ztncui-patch/public ./src/public \
  && mkdir -p ./src/tools \
  && cp /tmp/ztncui-patch/tools/init-admin.js ./src/tools/init-admin.js \
- && chmod 755 ./src/bin/www ./src/tools/init-admin.js \
+ && chmod 755 ./src/bin/www ./src/tools/init-admin.js ./src/ip.js ./src/validate.js ./src/controllers/zt.js \
  && rm -rf .git
 
 # ---------------------------------------------------------------------------

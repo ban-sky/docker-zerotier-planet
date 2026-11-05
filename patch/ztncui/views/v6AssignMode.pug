@@ -1,0 +1,41 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+  - const mode = network.v6AssignMode || {}
+
+  .card.form-card
+    h2 IPv6 assignment
+    p.card-subtitle Choose how IPv6 addresses are derived for members.
+
+    form.form-stack(method='POST', action='')
+      label.check-row
+        input(type='checkbox', name='6plane', value='true', checked=mode['6plane'] ? true : false)
+        span
+          strong ZT 6PLANE
+          span.check-hint /80 routable prefix for each device.
+      label.check-row
+        input(type='checkbox', name='rfc4193', value='true', checked=mode['rfc4193'] ? true : false)
+        span
+          strong RFC 4193
+          span.check-hint /128 unique local address for each device.
+      label.check-row
+        input(type='checkbox', name='zt', value='true', checked=mode.zt ? true : false)
+        span
+          strong From assignment pools
+          span.check-hint Use the configured IPv6 assignment pools.
+
+    .form-actions
+      button.btn.btn-primary(type='submit') Save
+      a.btn.btn-ghost(href=nwurl) Cancel
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

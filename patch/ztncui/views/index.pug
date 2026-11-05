@@ -1,0 +1,43 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends controller_layout
+
+block content
+  .page-head
+    div
+      p.eyebrow Controller
+      h1 Overview
+    a.btn.btn-primary(href='/controller/network/create') New network
+
+  if error
+    .alert.alert-error= error
+  else
+    .stat-grid
+      .stat
+        span.stat-label Controller address
+        strong.mono= zt_status.address
+        span.stat-hint This is the identity clients connect to.
+      .stat
+        span.stat-label ZeroTier version
+        strong= zt_status.version
+        span.stat-hint Planet and controller run in this container.
+
+    .card-grid
+      a.card.action-card(href='/controller/networks')
+        span.card-kicker Networks
+        strong Manage networks
+        span.card-text Review members, routes, DNS and assignment pools.
+        span.card-arrow →
+      a.card.action-card(href='/users')
+        span.card-kicker Access
+        strong Admin users
+        span.card-text Invite operators and rotate passwords.
+        span.card-arrow →
+      a.card.action-card(href='/users')
+        span.card-kicker Security
+        strong Change your password
+        span.card-text Passwords are hashed with Argon2id.
+        span.card-arrow →

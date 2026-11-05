@@ -1,0 +1,31 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+  - const mode = network.v4AssignMode || {}
+
+  .card.form-card
+    h2 IPv4 assignment
+    p.card-subtitle Automatically assign IPv4 addresses from the configured assignment pools.
+
+    form.form-stack(method='POST', action='')
+      label.check-row
+        input(type='checkbox', name='zt', value='true', checked=mode.zt ? true : false, data-autosubmit)
+        span
+          strong Auto-assign from IP assignment pools
+          span.check-hint Managed by the controller; members receive an address on join.
+
+    .form-actions
+      button.btn.btn-primary(type='submit') Save
+      a.btn.btn-ghost(href=nwurl) Cancel
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

@@ -1,0 +1,41 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends users_layout
+
+block users_content
+  if message
+    .alert.alert-info= message
+
+  if error
+    .alert.alert-error= error
+  else if !users || users.length === 0
+    .empty-state
+      h2 No admin users
+      p Create an administrator to access the controller.
+      a.btn.btn-primary(href='/users/create') Create admin
+  else
+    .card.table-card
+      .table-wrap
+        table.data-table
+          thead
+            tr
+              th User
+              th Password
+              th Actions
+          tbody
+            each user in users
+              - const userUrl = '/users/' + encodeURIComponent(user.name)
+              tr
+                td
+                  a.row-title(href=userUrl + '/password')= user.name
+                td
+                  if user.pass_set
+                    span.badge.badge-ok Set
+                  else
+                    span.badge.badge-warn Change required
+                td.actions
+                  a.btn.btn-sm.btn-ghost(href=userUrl + '/password') Set password
+                  a.btn.btn-sm.btn-danger(href=userUrl + '/delete', data-confirm='Delete this admin user?') Delete

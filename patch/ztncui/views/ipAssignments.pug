@@ -1,0 +1,61 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+  - const memberPath = nwurl + '/member/' + member.id
+  - const assignments = member.ipAssignments || []
+
+  .card
+    .card-head
+      div
+        h2= member.name || member.id
+        p.card-subtitle.mono= member.id
+      a.btn.btn-sm.btn-ghost(href=nwurl + '#members') Members
+
+    form.form-stack(method='POST', action='')
+      if assignments.length
+        ul.ip-list
+          each ipAssignment, index in assignments
+            li
+              span.mono= ipAssignment
+              a.btn.btn-sm.btn-danger(href=memberPath + '/ipAssignments/' + index + '/delete', data-confirm='Remove this IP assignment?') Remove
+      else
+        p.empty-inline No static IP assignments.
+
+      .field
+        label(for='ipAddress') Add IP address
+        .input-row
+          input#ipAddress(type='text', name='ipAddress', placeholder='10.42.0.50', value=(typeof ipAssignment === 'undefined' ? '' : ipAssignment.ipAddress))
+          button.btn.btn-primary(type='submit') Assign
+      p.field-hint The address must fall inside a managed route of this network.
+
+  .card.table-card
+    .card-head
+      h2 Managed routes
+      a.btn.btn-sm.btn-ghost(href=nwurl + '/routes') Edit
+    .table-wrap
+      table.data-table
+        thead
+          tr
+            th Target
+            th Gateway
+        tbody
+          each route in (network.routes || [])
+            tr
+              td.mono= route.target
+              td.mono= route.via || '—'
+          else
+            tr
+              td(colspan='2')
+                .empty-inline No managed routes.
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

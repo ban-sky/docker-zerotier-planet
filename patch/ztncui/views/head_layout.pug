@@ -1,0 +1,48 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+mixin nav_item(name, displayName, href)
+  li(class=((navigate && navigate.active === name) ? 'is-active' : ''))
+    a(href=href aria-current=((navigate && navigate.active === name) ? 'page' : false))= displayName
+
+mixin json_value(value)
+  - if ((!!value) && (value.constructor == Object || value.constructor == Array))
+      code.json= JSON.stringify(value, null, 2)
+  - else
+      code= value
+
+doctype html
+html(lang='en')
+  head
+    meta(charset='utf-8')
+    meta(name='viewport', content='width=device-width, initial-scale=1')
+    meta(name='color-scheme', content='light')
+    title= (title || 'ZeroTier') + ' · ZeroTier controller'
+    link(rel='stylesheet', href='/stylesheets/app.css')
+    script(src='/js/app.js', defer)
+  body
+    a.skip-link(href='#main') Skip to content
+    header.site-header
+      .container.header-inner
+        a.brand(href='/')
+          span.brand-mark ZT
+          span.brand-copy
+            strong ZeroTier
+            span Planet controller
+        button.nav-toggle(type='button', aria-controls='primary-nav', aria-expanded='false', data-nav-toggle)
+          span.nav-toggle-box
+          span.sr-only Toggle navigation
+        nav#primary-nav.site-nav(aria-label='Primary')
+          ul.nav-list
+            block nav_items
+          .nav-actions
+            block nav_login
+              a.nav-action(href='/logout') Sign out
+    main#main
+      block body_content
+    footer.site-footer
+      .container.footer-inner
+        span Self-hosted ZeroTier planet &amp; controller
+        span.footer-meta ZeroTier 1.16.2

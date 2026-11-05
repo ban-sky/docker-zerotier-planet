@@ -1,0 +1,50 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+  - const pools = network.ipAssignmentPools || []
+
+  .card.table-card
+    .table-wrap
+      table.data-table
+        thead
+          tr
+            th Range start
+            th Range end
+            th
+        tbody
+          each pool in pools
+            tr
+              td.mono= pool.ipRangeStart
+              td.mono= pool.ipRangeEnd
+              td.actions
+                a.btn.btn-sm.btn-danger(href=nwurl + '/ipAssignmentPools/' + pool.ipRangeStart + '/' + pool.ipRangeEnd + '/delete', data-confirm='Delete this assignment pool?') Delete
+          else
+            tr
+              td(colspan='3')
+                .empty-inline No assignment pools configured.
+
+  .card.form-card
+    h2 Add assignment pool
+    form.form-stack(method='POST', action=nwurl + '/ipAssignmentPools')
+      .field-row
+        .field
+          label(for='ipRangeStart') Range start
+          input#ipRangeStart(type='text', name='ipRangeStart', placeholder='10.42.0.100', value=(typeof ipAssignmentPool === 'undefined' ? '' : ipAssignmentPool.ipRangeStart), required)
+        .field
+          label(for='ipRangeEnd') Range end
+          input#ipRangeEnd(type='text', name='ipRangeEnd', placeholder='10.42.0.200', value=(typeof ipAssignmentPool === 'undefined' ? '' : ipAssignmentPool.ipRangeEnd), required)
+      .form-actions
+        button.btn.btn-primary(type='submit') Add pool
+        a.btn.btn-ghost(href=nwurl) Cancel
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

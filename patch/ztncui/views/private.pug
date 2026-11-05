@@ -1,0 +1,36 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+
+  .card.form-card
+    h2 Access control
+    p.card-subtitle When enabled, only members you authorise can communicate on this network.
+
+    form.form-stack(method='POST', action='')
+      label.check-row
+        input(type='checkbox', name='private', value='true', checked=network.private ? true : false, data-autosubmit)
+        span
+          strong Private network
+          span.check-hint Disabling this lets every member talk to every other member without authorisation.
+      noscript
+        button.btn.btn-primary(type='submit') Save
+      .form-actions
+        button.btn.btn-primary(type='submit') Save
+        a.btn.btn-ghost(href=nwurl) Cancel
+
+    if !network.private
+      .alert.alert-warn
+        strong Public network.
+        |  Access control is off; member authorisation no longer restricts traffic.
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

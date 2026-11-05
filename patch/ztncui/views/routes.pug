@@ -1,0 +1,49 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends network_layout
+
+block net_content
+  - const nwurl = '/controller/network/' + network.nwid
+  - const networkRoutes = network.routes || []
+
+  .card.table-card
+    .table-wrap
+      table.data-table
+        thead
+          tr
+            th Target
+            th Gateway
+            th
+        tbody
+          each route in networkRoutes
+            tr
+              td.mono= route.target
+              td.mono= route.via || '—'
+              td.actions
+                a.btn.btn-sm.btn-danger(href=nwurl + '/routes/' + route.target + '/delete', data-confirm='Delete this managed route?') Delete
+          else
+            tr
+              td(colspan='3')
+                .empty-inline No managed routes yet.
+
+  .card.form-card
+    h2 Add route
+    form.form-stack(method='POST', action=nwurl + '/routes')
+      .field
+        label(for='target') Target (CIDR)
+        input#target(type='text', name='target', placeholder='10.42.0.0/24', value=(typeof route === 'undefined' ? '' : route.target), required)
+      .field
+        label(for='via') Gateway (optional)
+        input#via(type='text', name='via', placeholder='10.42.0.1', value=(typeof route === 'undefined' ? '' : (route.via || '')))
+      .form-actions
+        button.btn.btn-primary(type='submit') Add route
+        a.btn.btn-ghost(href=nwurl) Cancel
+
+  if errors
+    .alert.alert-error
+      ul.list-tight
+        each err in errors
+          li= err.msg

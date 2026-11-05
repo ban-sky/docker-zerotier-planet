@@ -1,0 +1,26 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends login_layout
+
+block login_content
+  p.eyebrow Admin access
+  h1.auth-title Sign in
+  p.auth-subtitle Use the admin password shown in the container logs or the password file on the host.
+
+  if message
+    .alert.alert-info= message
+
+  form.form-stack(method='POST', action='')
+    .field
+      label(for='username') Username
+      input#username(type='text', name='username', autocomplete='username', placeholder='admin', required, autofocus)
+    .field
+      label(for='password') Password
+      input#password(type='password', name='password', autocomplete='current-password', placeholder='••••••••••••', required)
+    button.btn.btn-primary.btn-block(type='submit') Sign in
+
+  p.auth-footnote
+    a(href='/') Back to the planet overview

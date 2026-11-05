@@ -1,0 +1,23 @@
+//-
+  ztncui - ZeroTier network controller UI
+  Copyright (C) 2017-2021  Key Networks (https://key-networks.com)
+  Licensed under GPLv3 - see LICENSE for details.
+
+extends controller_layout
+
+block nav_items
+  +nav_item('controller_home', 'Overview', '/controller')
+  +nav_item('networks', 'Networks', '/controller/networks')
+  +nav_item('users', 'Users', '/users')
+  +nav_item('create_user', 'Invite user', '/users/create')
+
+block content
+  .page-head
+    div
+      p.eyebrow Access
+      h1= title
+    a.btn.btn-ghost(href='/users') All users
+  if error
+    .alert.alert-error= error
+  else
+    block users_content
