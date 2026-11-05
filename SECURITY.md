@@ -92,6 +92,13 @@ defaults.
   rate limiter.
 - The file server and UI share the host's network namespace in the default
   Compose setup. Use a reverse proxy if you need finer network separation.
+- ztncui 0.8.14 is no longer maintained upstream and its pinned dependency
+  tree still reports advisories (bootstrap 3, ip-address 5.x, validator 9.x,
+  got 7.x, morgan 1.9.x). The paths exercised here avoid the known vulnerable
+  helpers (no Bootstrap popovers/tooltips, no HTML-emitting ip-address methods,
+  a fixed controller URL and the default morgan format), but removing them all
+  requires a ztncui rewrite or a newer upstream release. Track this in your
+  image rebuild/audit process.
 - Container images are built for `linux/amd64` and `linux/arm64` only.
 - Real TUN/planet connectivity cannot be validated in this build environment;
   validate your deployment with `zerotier-cli listpeers` and a test client.
