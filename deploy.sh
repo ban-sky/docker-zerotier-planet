@@ -30,7 +30,7 @@ Usage: ./deploy.sh [options]
 
 Options:
   --name NAME        container name (default: myztplanet)
-  --image IMAGE      image reference (default: ghcr.io/ban-sky/docker-zerotier-planet:latest)
+  --image IMAGE      image reference (default: docker-zerotier-planet:latest; built if missing)
   --data DIR         data root (default: ./data/zerotier)
   --zt-port PORT     host UDP port for ZeroTier (default: 9994)
   --api-port PORT    host TCP port for ztncui (default: 3443)
