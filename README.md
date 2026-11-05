@@ -2,7 +2,7 @@
 
 在 Docker 中自建 **ZeroTier 行星服务器（planet）** 和 **网络控制器（ztncui）**。
 本项目是 [xubiaolin/docker-zerotier-planet](https://github.com/xubiaolin/docker-zerotier-planet)
-的维护分支，已升级到 **ZeroTier One 1.16.2**，并针对上游 issue 中的安全问题做了系统性加固。
+的维护分支，已升级到 **ZeroTier One 1.16.2**（截至 2026-11-06 核查，上游最新稳定版仍是 1.16.2），并针对上游 issue 中的安全问题做了系统性加固。
 
 > **许可证提醒（重要）**
 > ZeroTier 1.16 起把 controller 移到了 `nonfree/`，采用 *ZeroTier SOURCE-AVAILABLE
@@ -190,6 +190,9 @@ docker compose restart
    客户端 planet 的 ID 不变。
 
 ## 本地构建与测试
+
+构建使用固定 digest 的 Debian bookworm-slim 与 Node.js 24 LTS slim 基础镜像；
+升级基础镜像时修改 `Dockerfile` 顶部 ARG 并重新跑一遍测试。
 
 ```bash
 # 本地单架构构建

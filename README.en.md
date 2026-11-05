@@ -3,8 +3,9 @@
 Run your own **ZeroTier planet** and **network controller (ztncui)** in Docker.
 This is a maintained fork of
 [xubiaolin/docker-zerotier-planet](https://github.com/xubiaolin/docker-zerotier-planet),
-upgraded to **ZeroTier One 1.16.2** with fixes for the security issues reported
-against the upstream project.
+upgraded to **ZeroTier One 1.16.2** (verified 2026-11-06: this is still the latest
+upstream stable release) with fixes for the security issues reported against the
+upstream project.
 
 > **License warning (important)**
 > Since ZeroTier 1.16 the controller lives in `nonfree/` and is covered by the
@@ -199,6 +200,10 @@ lost, every client must switch to a new planet. Back up `data/one/` and
    regenerates the planet; the planet ID stays the same.
 
 ## Local build and tests
+
+Builds use digest-pinned Debian bookworm-slim and Node.js 24 LTS slim base images.
+When bumping a base image, update the ARGs at the top of `Dockerfile` and re-run
+the tests.
 
 ```bash
 # local single-architecture build

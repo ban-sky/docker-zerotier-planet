@@ -9,12 +9,14 @@
 #
 # GPLv3 - see LICENSE.
 
-ARG NODE_VERSION=22-bookworm
+# Pinned multi-arch base images (2026-11-05). Bump deliberately after testing.
+ARG DEBIAN_IMAGE=debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+ARG NODE_IMAGE=node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9
 
 # ---------------------------------------------------------------------------
 # ZeroTier One + mkworld
 # ---------------------------------------------------------------------------
-FROM node:${NODE_VERSION} AS zt-builder
+FROM ${DEBIAN_IMAGE} AS zt-builder
 
 ARG ZT_VERSION=1.16.2
 ARG ZT_COMMIT=fc5c3ec22090b5b2a0f274e863651fe9ca489bf4
@@ -36,18 +38,20 @@ RUN cd zerotier \
  && make -j"$(nproc)" ZT_NONFREE=1 ZT_SSO_SUPPORTED=0 \
  && mkdir -p /out/usr/sbin /out/licenses \
  && cp zerotier-one /out/usr/sbin/ \
+ && strip --strip-unneeded /out/usr/sbin/zerotier-one \
  && ln -sf zerotier-one /out/usr/sbin/zerotier-cli \
  && ln -sf zerotier-one /out/usr/sbin/zerotier-idtool \
  && g++ -std=c++17 -O2 -I. -Iext -o /out/mkworld /src/mkworld_custom.cpp \
       node/ECC.cpp node/Identity.cpp node/InetAddress.cpp node/SHA512.cpp \
       node/Salsa20.cpp node/Utils.cpp osdep/OSUtils.cpp \
       -pthread -ldl -lrt -lm \
+ && strip --strip-unneeded /out/mkworld \
  && cp LICENSE.txt LICENSE-MPL.txt nonfree/LICENSE.md /out/licenses/
 
 # ---------------------------------------------------------------------------
 # ztncui (pinned commit, hardened overlay, WASM Argon2)
 # ---------------------------------------------------------------------------
-FROM node:${NODE_VERSION} AS ui-builder
+FROM ${NODE_IMAGE} AS ui-builder
 
 ARG ZTNCUI_COMMIT=1b2284864de48d2dcae22582fff122fe24909c3d
 ARG GH_MIRROR=https://github.com
@@ -70,7 +74,7 @@ WORKDIR /src/ztncui/src
 # Install from the committed lockfile before copying the overlay so that the
 # dependency layer is cached and the install is reproducible.
 COPY patch/ztncui/package.json patch/ztncui/package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
 COPY patch/ztncui-networkController.patch /tmp/ztncui-networkController.patch
 COPY patch/ztncui/ /tmp/ztncui-patch/
@@ -91,7 +95,7 @@ RUN cd /src/ztncui \
 # ---------------------------------------------------------------------------
 # Runtime
 # ---------------------------------------------------------------------------
-FROM node:${NODE_VERSION}-slim AS runtime
+FROM ${NODE_IMAGE} AS runtime
 
 LABEL org.opencontainers.image.title="docker-zerotier-planet" \
       org.opencontainers.image.description="Self-hosted ZeroTier planet and controller with TLS and hardened defaults" \
@@ -101,7 +105,7 @@ LABEL org.opencontainers.image.title="docker-zerotier-planet" \
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl openssl tini tzdata util-linux \
+      ca-certificates openssl tini tzdata util-linux \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
