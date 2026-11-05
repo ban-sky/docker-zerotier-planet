@@ -43,7 +43,7 @@
 - ztncui：CSP、HSTS、SameSite/HttpOnly/Secure Cookie、同源 Origin/Referer 校验、
   登录限流、开放重定向修复、原型链用户名 DoS 修复、会话固定修复、错误页不泄漏堆栈。
 - 原生 `argon2` 改为纯 WASM `hash-wasm`，无需 node-gyp，并统一使用 Argon2id（64 MiB）。
-- 密码文件原子写入、0600；管理员只能修改自己的密码；不能删除自己或最后一个管理员。
+- 密码文件原子写入、0600；已设置密码的账户只能由本人修改；管理员可为新建用户设置初始密码；不能删除自己或最后一个管理员。
 - `docker-compose.yml` 默认 `read_only`、`no-new-privileges`、`tmpfs /tmp`。
 - 增加 `SECURITY.md`、漏洞披露流程、依赖锁定和回归测试。
 

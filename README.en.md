@@ -45,7 +45,7 @@ against the upstream project.
 - No `set -x`: authtoken, controller token and download keys never appear in logs.
 - ztncui: CSP, HSTS, SameSite/HttpOnly/Secure cookies, same-origin Origin/Referer checks, login throttling, open-redirect fix, prototype-chain username DoS fix, session fixation fix, and error pages without stack traces.
 - Native `argon2` replaced by pure-WASM `hash-wasm` (no node-gyp) with Argon2id (64 MiB).
-- Atomic 0600 password writes; admins can only change their own password; the last admin cannot be deleted.
+- Atomic 0600 password writes; existing passwords can only be changed by their owner; an admin can initialize a newly created user; the last admin cannot be deleted.
 - Compose defaults to `read_only`, `no-new-privileges` and a `tmpfs` `/tmp`.
 - `SECURITY.md`, a disclosure process, dependency lockfiles and regression tests.
 
