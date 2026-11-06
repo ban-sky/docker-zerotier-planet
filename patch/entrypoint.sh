@@ -135,9 +135,12 @@ MOON_ARGS=(--moon "$ZT_HOME/moon.json" --port "$ZT_PORT")
 as_app node /app/configure-moon.js "${MOON_ARGS[@]}"
 
 log "generating the moon file"
+# genmoon writes <world-id>.moon into the current directory, not moons.d.
 as_app bash -c "cd '$ZT_HOME' && '$IDTOOL' genmoon moon.json >/dev/null"
-MOON_FILE=$(ls -t "$ZT_HOME"/moons.d/*.moon 2>/dev/null | head -n 1 || true)
+MOON_FILE=$(ls -t "$ZT_HOME"/*.moon 2>/dev/null | head -n 1 || true)
 [ -n "$MOON_FILE" ] || die "genmoon did not produce a .moon file"
+as_app cp -f "$MOON_FILE" "$ZT_HOME/moons.d/"
+chmod 644 "$ZT_HOME/moons.d/$(basename "$MOON_FILE")"
 
 if [ "$REGENERATE_PLANET" = "1" ] || [ ! -s "$DIST_DIR/planet" ]; then
   log "building planet from identity + moon"
