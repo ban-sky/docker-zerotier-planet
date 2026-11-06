@@ -218,6 +218,31 @@ node tests/ztncui-views.test.js
 （全部 Pug 视图编译）；CI 工作流需由仓库所有者
 自行添加（GitHub OAuth App 推送 workflow 文件需要额外的 `workflow` scope）。
 
+### 升级上游版本
+
+`scripts/upgrade-upstreams.sh` 用来检查并升级两个上游依赖，只修改 `Dockerfile`
+顶部的 `ZT_VERSION`、`ZT_COMMIT` 与 `ZTNCUI_COMMIT`，不会合并
+xubiaolin/docker-zerotier-planet（本分支已大幅重构），也不会自动提交：
+
+```bash
+# 只检查，不改文件（默认）
+./scripts/upgrade-upstreams.sh
+
+# 更新 Dockerfile 并跑本地回归测试；测试失败会自动恢复 Dockerfile
+./scripts/upgrade-upstreams.sh --apply
+
+# 只升级 ZeroTier / 只升级 ztncui
+./scripts/upgrade-upstreams.sh --apply --zerotier-only
+./scripts/upgrade-upstreams.sh --apply --ztncui-only
+
+# 更新后直接构建（需要本机 docker）
+./scripts/upgrade-upstreams.sh --apply --build
+```
+
+脚本依赖 `curl`、`git`、`node`（`--build` 另需 docker）；GitHub API 有匿名限流时可传 `GITHUB_TOKEN`。升级 ZeroTier 后应查看 release
+notes 并重点验证 controller API；升级 ztncui 后应重新检查 `patch/ztncui` 的
+controller/view 覆盖是否仍兼容。README/SECURITY 中的版本号与变更说明需要手动同步。
+
 ## 安全模型与限制
 
 - 这是**单节点** controller，不提供 HA；controller 数据库就是 `data/one/controller.d`。

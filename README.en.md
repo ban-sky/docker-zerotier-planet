@@ -232,6 +232,33 @@ node tests/ztncui-views.test.js
 workflow yourself if desired: pushing workflow files with a GitHub OAuth App requires the
 additional `workflow` scope.
 
+### Upgrading upstream versions
+
+`scripts/upgrade-upstreams.sh` checks and updates the two upstream pins. It only
+edits `ZT_VERSION`, `ZT_COMMIT` and `ZTNCUI_COMMIT` in `Dockerfile`; it does not
+merge xubiaolin/docker-zerotier-planet (this fork has diverged) and does not commit:
+
+```bash
+# read-only check (default)
+./scripts/upgrade-upstreams.sh
+
+# update Dockerfile and run the local regression tests
+./scripts/upgrade-upstreams.sh --apply
+
+# only one upstream
+./scripts/upgrade-upstreams.sh --apply --zerotier-only
+./scripts/upgrade-upstreams.sh --apply --ztncui-only
+
+# build after a successful update (requires docker)
+./scripts/upgrade-upstreams.sh --apply --build
+```
+
+The script needs `curl`, `git` and `node` (`--build` additionally needs docker). Set `GITHUB_TOKEN` if the anonymous GitHub API rate limit is too low. After a
+ZeroTier bump, read the release notes and re-check the controller API; after a
+ztncui bump, review whether the `patch/ztncui` controller/view overlay still
+applies. Version numbers and changelog text in README/SECURITY are updated
+manually.
+
 ## Security model and limitations
 
 - Single-node controller; there is no HA. The controller database is
