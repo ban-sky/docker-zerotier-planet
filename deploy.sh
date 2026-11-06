@@ -27,6 +27,7 @@ IP_ADDR4="${IP_ADDR4:-}"
 IP_ADDR6="${IP_ADDR6:-}"
 ASSUME_YES=0
 RECREATE=0
+PULL=0
 
 usage() {
   cat <<'EOF'
@@ -35,6 +36,7 @@ Usage: ./deploy.sh [options]
 Options:
   --name NAME        container name (default: myztplanet)
   --image IMAGE      image reference (default: docker-zerotier-planet:latest; built if missing)
+  --pull             always docker pull IMAGE first (for GHCR workflow images)
   --data DIR         data root (default: ./data/zerotier)
   --zt-port PORT     host UDP port for ZeroTier (default: 9994)
   --api-port PORT    host TCP port for ztncui (default: 3443)
@@ -62,6 +64,7 @@ while [ $# -gt 0 ]; do
     --file-port) FILE_PORT="${2:?}"; shift 2 ;;
     --ipv4) IP_ADDR4="${2:?}"; shift 2 ;;
     --ipv6) IP_ADDR6="${2:?}"; shift 2 ;;
+    --pull) PULL=1; shift ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     --recreate) RECREATE=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -93,6 +96,11 @@ case "$BUILD_JOBS" in ''|*[!0-9]*) die "BUILD_JOBS must be a positive integer" ;
 [ "$BUILD_JOBS" -ge 1 ] || die "BUILD_JOBS must be at least 1"
 
 command -v "$DOCKER" >/dev/null 2>&1 || die "$DOCKER is not installed or not in PATH"
+
+if [ "$PULL" = "1" ]; then
+  log "pulling $IMAGE"
+  "$DOCKER" pull "$IMAGE" || die "docker pull failed: $IMAGE"
+fi
 
 if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
   [ -f Dockerfile ] || die "image $IMAGE not found; build it first or set IMAGE"

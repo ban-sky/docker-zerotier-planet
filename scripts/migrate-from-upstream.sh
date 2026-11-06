@@ -43,6 +43,7 @@ FILE_PORT="${FILE_PORT:-}"
 ASSUME_YES=0
 DRY_RUN=0
 BUILD_IMAGE=1
+PULL_IMAGE=0
 
 TMP_NAME=""
 BACKUP_FILE=""
@@ -73,6 +74,7 @@ Options:
   --target-data DIR  new data root (default: reuse --data in place); copied
                      from the old root and left there for rollback
   --image IMAGE      image to build/use (default: docker-zerotier-planet:latest)
+  --pull             docker pull IMAGE instead of building (for GHCR images)
   --backup DIR       backup directory (default: ./backups)
   --ipv4 ADDR        public IPv4 address or hostname (default: old container env)
   --ipv6 ADDR        optional public IPv6 address
@@ -102,6 +104,7 @@ while [ $# -gt 0 ]; do
     --api-port) API_PORT="${2:?}"; shift 2 ;;
     --file-port) FILE_PORT="${2:?}"; shift 2 ;;
     --no-build) BUILD_IMAGE=0; shift ;;
+    --pull) PULL_IMAGE=1; BUILD_IMAGE=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -315,6 +318,11 @@ BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unk
 log "repository: $REPO_ROOT (branch: $BRANCH)"
 if [ "$BRANCH" != "feature/ztncui-modern-ui" ] && [ "$BRANCH" != "main" ]; then
   warn "current branch is '$BRANCH'; make sure this is the version you want to deploy"
+fi
+
+if [ "$PULL_IMAGE" -eq 1 ]; then
+  log "pulling $IMAGE"
+  "$DOCKER" pull "$IMAGE" || die "docker pull failed: $IMAGE; the old container was not touched"
 fi
 
 if [ "$BUILD_IMAGE" -eq 1 ]; then
