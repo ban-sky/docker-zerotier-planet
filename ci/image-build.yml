@@ -1,0 +1,91 @@
+name: Build container image
+
+on:
+  push:
+    branches:
+      - main
+      - feature/ztncui-modern-ui
+    paths:
+      - Dockerfile
+      - patch/**
+      - .github/workflows/image-build.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - patch/**
+      - .github/workflows/image-build.yml
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Build platforms
+        type: choice
+        options:
+          - linux/amd64
+          - linux/amd64,linux/arm64
+        default: linux/amd64
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=ztncui-modern-ui,enable=${{ github.ref == 'refs/heads/feature/ztncui-modern-ui' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ inputs.platforms || 'linux/amd64' }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ZT_VERSION=1.16.2
+            ZT_COMMIT=fc5c3ec22090b5b2a0f274e863651fe9ca489bf4
+            ZTNCUI_COMMIT=1b2284864de48d2dcae22582fff122fe24909c3d
+            APT_MIRROR=http://deb.debian.org
+            GH_MIRROR=https://github.com
+            GH_FALLBACK=https://github.com
+            BUILD_JOBS=4
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false

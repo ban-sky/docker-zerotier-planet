@@ -281,8 +281,55 @@ node tests/ztncui-views.test.js
 ```
 
 仓库提供 `tests/http-server.test.sh`（文件服务器安全回归）与 `tests/ztncui-views.test.js`
-（全部 Pug 视图编译）；CI 工作流需由仓库所有者
-自行添加（GitHub OAuth App 推送 workflow 文件需要额外的 `workflow` scope）。
+（全部 Pug 视图编译）。
+
+### GitHub Actions 构建镜像
+
+`ci/image-build.yml` 是 GitHub Actions 工作流模板。由于 GitHub 对 OAuth App 推送
+`.github/workflows/` 下的文件要求额外的 `workflow` scope，首次需要在网页手动创建：
+
+1. 打开仓库 **Add file → Create new file**；
+2. 文件名填 `.github/workflows/image-build.yml`；
+3. 把 `ci/image-build.yml` 的内容粘贴进去，提交到 `feature/ztncui-modern-ui`；
+4. 打开 **Actions → Build container image**，工作流会自动运行，也可以手动
+   **Run workflow**。
+
+工作流默认只构建 `linux/amd64`；手动运行时可选 amd64+arm64。推送后镜像位于：
+
+```text
+ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui
+ghcr.io/ban-sky/docker-zerotier-planet:sha-<commit>
+```
+
+`main` 分支构建 `:latest`，Git tag 构建同名 tag。首次构建后 GHCR 包默认是私有的；
+要在服务器上直接拉取，二选一：
+
+```bash
+# 方式 A：把 package 设为 public（GitHub → Packages → Package settings → Visibility）
+
+# 方式 B：用有 read:packages 权限的 PAT 登录
+echo "$CR_PAT" | docker login ghcr.io -u ban-sky --password-stdin
+```
+
+拉取并部署：
+
+```bash
+docker pull ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui
+
+sudo IMAGE=ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui \
+  PULL=1 ./deploy.sh --pull --name myztplanet --data ./data/zerotier
+```
+
+从旧部署迁移时直接拉取工作流镜像，不在服务器上编译：
+
+```bash
+sudo ./scripts/migrate-from-upstream.sh \
+  --pull \
+  --image ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui \
+  --target-data /opt/docker-zerotier-planet/data/zerotier
+```
+
+工作流只在 GitHub 托管 runner 上编译；服务器只负责 `docker pull` 和运行。
 
 ### 升级上游版本
 

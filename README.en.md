@@ -301,9 +301,58 @@ node tests/ztncui-views.test.js
 ```
 
 `tests/http-server.test.sh` contains file-server security regression tests, and
-`tests/ztncui-views.test.js` compiles every Pug view. Add a CI
-workflow yourself if desired: pushing workflow files with a GitHub OAuth App requires the
-additional `workflow` scope.
+`tests/ztncui-views.test.js` compiles every Pug view.
+
+### Building with GitHub Actions
+
+`ci/image-build.yml` is the GitHub Actions workflow template. GitHub requires the
+additional `workflow` scope for an OAuth App to create files under
+`.github/workflows/`, so add it once through the web UI:
+
+1. Open the repository and choose **Add file → Create new file**.
+2. Use the path `.github/workflows/image-build.yml`.
+3. Paste the contents of `ci/image-build.yml` and commit it to
+   `feature/ztncui-modern-ui`.
+4. Open **Actions → Build container image**; the push triggers a build, or start
+   one with **Run workflow**.
+
+The default build is `linux/amd64`; a manual run can also select amd64+arm64.
+Images are published as:
+
+```text
+ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui
+ghcr.io/ban-sky/docker-zerotier-planet:sha-<commit>
+```
+
+`main` publishes `:latest`; Git tags publish the tag name. The GHCR package is
+private after the first build. To pull it on the server, either make the package
+public (GitHub → Packages → Package settings → Visibility) or log in with a PAT
+that has `read:packages`:
+
+```bash
+echo "$CR_PAT" | docker login ghcr.io -u ban-sky --password-stdin
+```
+
+Pull and deploy without compiling on the server:
+
+```bash
+docker pull ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui
+
+sudo IMAGE=ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui \
+  PULL=1 ./deploy.sh --pull --name myztplanet --data ./data/zerotier
+```
+
+Migrating an old deployment directly from the workflow image:
+
+```bash
+sudo ./scripts/migrate-from-upstream.sh \
+  --pull \
+  --image ghcr.io/ban-sky/docker-zerotier-planet:ztncui-modern-ui \
+  --target-data /opt/docker-zerotier-planet/data/zerotier
+```
+
+The workflow runs on GitHub-hosted runners; the server only pulls and runs the
+image.
 
 ### Upgrading upstream versions
 
