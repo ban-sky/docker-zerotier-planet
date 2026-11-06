@@ -28,7 +28,8 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DOCKER="${DOCKER:-docker}"
 CONTAINER_NAME="${CONTAINER_NAME:-myztplanet}"
 IMAGE="${IMAGE:-docker-zerotier-planet:latest}"
-DATA_ROOT="${DATA_ROOT:-}"
+SOURCE_DATA="${SOURCE_DATA:-}"
+TARGET_DATA="${TARGET_DATA:-}"
 BACKUP_DIR="${BACKUP_DIR:-$REPO_ROOT/backups}"
 IP_ADDR4="${IP_ADDR4:-}"
 IP_ADDR6="${IP_ADDR6:-}"
@@ -42,6 +43,7 @@ BUILD_IMAGE=1
 TMP_NAME=""
 BACKUP_FILE=""
 BACKUP_READY=0
+TARGET_READY=0
 STOPPED=0
 OLD_REMOVED=0
 SUCCESS=0
@@ -64,6 +66,8 @@ Usage: ./scripts/migrate-from-upstream.sh [options]
 Options:
   --name NAME        existing container name (default: myztplanet)
   --data DIR         existing data root (default: derived from the container)
+  --target-data DIR  new data root (default: reuse --data in place); copied
+                     from the old root and left there for rollback
   --image IMAGE      image to build/use (default: docker-zerotier-planet:latest)
   --backup DIR       backup directory (default: ./backups)
   --ipv4 ADDR        public IPv4 address or hostname (default: old container env)
@@ -84,7 +88,8 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     --name) CONTAINER_NAME="${2:?}"; shift 2 ;;
-    --data) DATA_ROOT="${2:?}"; shift 2 ;;
+    --data) SOURCE_DATA="${2:?}"; shift 2 ;;
+    --target-data) TARGET_DATA="${2:?}"; shift 2 ;;
     --image) IMAGE="${2:?}"; shift 2 ;;
     --backup) BACKUP_DIR="${2:?}"; shift 2 ;;
     --ipv4) IP_ADDR4="${2:?}"; shift 2 ;;
@@ -113,6 +118,7 @@ need_cmd "$DOCKER"
 need_cmd tar
 need_cmd gzip
 need_cmd sha256sum
+need_cmd realpath
 [ -x "$REPO_ROOT/deploy.sh" ] || die "deploy.sh not found under $REPO_ROOT"
 [ -f "$REPO_ROOT/Dockerfile" ] || die "Dockerfile not found under $REPO_ROOT"
 
@@ -132,34 +138,61 @@ get_env() {
   printf '%s\n' "$OLD_ENV" | sed -n "s/^$1=//p" | head -n 1
 }
 
-if [ -z "$DATA_ROOT" ]; then
+if [ -z "$SOURCE_DATA" ]; then
   CONFIG_SRC=$("$DOCKER" inspect -f '{{range .Mounts}}{{if eq .Destination "/app/config"}}{{.Source}}{{end}}{{end}}' "$CONTAINER_NAME")
   [ -n "$CONFIG_SRC" ] || die "cannot detect /app/config mount; pass --data DIR"
-  DATA_ROOT=$(dirname "$CONFIG_SRC")
+  SOURCE_DATA=$(dirname "$CONFIG_SRC")
 fi
 
-[ -d "$DATA_ROOT" ] || die "data directory not found: $DATA_ROOT"
-DATA_ROOT=$(cd "$DATA_ROOT" && pwd)
-[ "$DATA_ROOT" != "/" ] || die "refusing to use / as the data directory"
-[ "$DATA_ROOT" != "$REPO_ROOT" ] || die "data directory must not be the repository root"
-[ -d "$DATA_ROOT/one" ] || die "missing $DATA_ROOT/one (is this really the old deployment?)"
-[ -s "$DATA_ROOT/one/identity.secret" ] || die "missing $DATA_ROOT/one/identity.secret; back up and check the old deployment first"
-[ -r "$DATA_ROOT/one" ] || die "cannot read $DATA_ROOT/one; run with sudo or fix permissions"
-[ -d "$DATA_ROOT/config" ] || die "missing $DATA_ROOT/config"
-[ -d "$DATA_ROOT/dist" ] || die "missing $DATA_ROOT/dist"
+[ -d "$SOURCE_DATA" ] || die "data directory not found: $SOURCE_DATA"
+SOURCE_DATA=$(cd "$SOURCE_DATA" && pwd)
+[ "$SOURCE_DATA" != "/" ] || die "refusing to use / as the data directory"
+[ "$SOURCE_DATA" != "$REPO_ROOT" ] || die "data directory must not be the repository root"
+[ -d "$SOURCE_DATA/one" ] || die "missing $SOURCE_DATA/one (is this really the old deployment?)"
+[ -s "$SOURCE_DATA/one/identity.secret" ] || die "missing $SOURCE_DATA/one/identity.secret; back up and check the old deployment first"
+[ -r "$SOURCE_DATA/one" ] || die "cannot read $SOURCE_DATA/one; run with sudo or fix permissions"
+[ -d "$SOURCE_DATA/config" ] || die "missing $SOURCE_DATA/config"
+[ -d "$SOURCE_DATA/dist" ] || die "missing $SOURCE_DATA/dist"
 
-if [ ! -d "$DATA_ROOT/one/controller.d" ]; then
-  warn "$DATA_ROOT/one/controller.d not found; the controller database may be empty"
+if [ ! -d "$SOURCE_DATA/one/controller.d" ]; then
+  warn "$SOURCE_DATA/one/controller.d not found; the controller database may be empty"
+fi
+
+# The new deployment can keep using the old data root, or copy it to a new one
+# (for example /root/... -> /opt/...). The source is never modified in the copy
+# case, so it remains available if the new container has to be rolled back.
+if [ -z "$TARGET_DATA" ]; then
+  TARGET_DATA="$SOURCE_DATA"
+else
+  TARGET_DATA=$(realpath -m "$TARGET_DATA")
+fi
+if [ "$TARGET_DATA" != "$SOURCE_DATA" ]; then
+  [ "$TARGET_DATA" != "/" ] || die "refusing to use / as the target data directory"
+  [ "$TARGET_DATA" != "$REPO_ROOT" ] || die "target data directory must not be the repository root"
+  [ -L "$TARGET_DATA" ] && die "target data directory must not be a symlink: $TARGET_DATA"
+  if [ -e "$TARGET_DATA" ]; then
+    [ -d "$TARGET_DATA" ] || die "target data path is not a directory: $TARGET_DATA"
+    [ -z "$(ls -A "$TARGET_DATA" 2>/dev/null || true)" ] \
+      || die "target data directory must be empty: $TARGET_DATA"
+  fi
+  case "$TARGET_DATA/" in
+    "$SOURCE_DATA"/*) die "target data directory must not be inside the old data directory" ;;
+  esac
+  case "$SOURCE_DATA/" in
+    "$TARGET_DATA"/*) die "old data directory must not be inside the target data directory" ;;
+  esac
 fi
 
 # Detect a legacy ztncui password database that should become config/ztncui-passwd.
-NEW_PASSWD="$DATA_ROOT/config/ztncui-passwd"
-if [ -s "$NEW_PASSWD" ]; then
+NEW_PASSWD="$TARGET_DATA/config/ztncui-passwd"
+if [ "$TARGET_DATA" != "$SOURCE_DATA" ] && [ -s "$SOURCE_DATA/config/ztncui-passwd" ]; then
+  log "found existing $SOURCE_DATA/config/ztncui-passwd; it will be copied with the old config"
+elif [ -s "$NEW_PASSWD" ]; then
   log "found existing $NEW_PASSWD; existing ztncui users will be kept"
 else
   for candidate in \
-    "$DATA_ROOT/ztncui/src/etc/passwd" \
-    "$DATA_ROOT/ztncui/etc/passwd"
+    "$SOURCE_DATA/ztncui/src/etc/passwd" \
+    "$SOURCE_DATA/ztncui/etc/passwd"
   do
     [ -s "$candidate" ] || continue
     if command -v node >/dev/null 2>&1; then
@@ -181,11 +214,14 @@ else
 fi
 
 # ztncui keeps member display names in node-persist; migrate that too.
-NEW_STORAGE="$DATA_ROOT/config/ztncui-storage"
-if [ -z "$(ls -A "$NEW_STORAGE" 2>/dev/null || true)" ]; then
+NEW_STORAGE="$TARGET_DATA/config/ztncui-storage"
+if [ "$TARGET_DATA" != "$SOURCE_DATA" ] \
+  && [ -n "$(ls -A "$SOURCE_DATA/config/ztncui-storage" 2>/dev/null || true)" ]; then
+  log "found existing $SOURCE_DATA/config/ztncui-storage; it will be copied with the old config"
+elif [ -z "$(ls -A "$NEW_STORAGE" 2>/dev/null || true)" ]; then
   for candidate in \
-    "$DATA_ROOT/ztncui/src/etc/storage" \
-    "$DATA_ROOT/ztncui/etc/storage"
+    "$SOURCE_DATA/ztncui/src/etc/storage" \
+    "$SOURCE_DATA/ztncui/etc/storage"
   do
     if [ -d "$candidate" ] && [ -n "$(ls -A "$candidate" 2>/dev/null || true)" ]; then
       OLD_STORAGE="$candidate"
@@ -242,7 +278,8 @@ cat <<EOF
 Migration plan
 --------------
   old container : $CONTAINER_NAME ($OLD_IMAGE, $OLD_STATE)
-  old data      : $DATA_ROOT
+  old data      : $SOURCE_DATA
+  new data      : $TARGET_DATA ($([ "$TARGET_DATA" = "$SOURCE_DATA" ] && printf 'reused in place' || printf 'copy of old data; old root retained'))
   new image     : $IMAGE
   temporary name: $TMP_NAME
   backup        : $BACKUP_DIR/upstream-migration-<timestamp>.tar.gz
@@ -300,7 +337,7 @@ mkdir -p "$BACKUP_DIR"
 BACKUP_DIR=$(cd "$BACKUP_DIR" && pwd)
 [ -w "$BACKUP_DIR" ] || die "backup directory is not writable: $BACKUP_DIR"
 case "$BACKUP_DIR/" in
-  "$DATA_ROOT"/*) die "backup directory must not be inside the data directory" ;;
+  "$SOURCE_DATA"/*|"$TARGET_DATA"/*) die "backup directory must not be inside a data directory" ;;
 esac
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
@@ -312,8 +349,8 @@ restore_backup() {
   [ -f "$BACKUP_FILE.sha256" ] || { warn "backup checksum is missing; cannot restore automatically"; return 1; }
   sha256sum -c "$BACKUP_FILE.sha256" >/dev/null 2>&1 \
     || { warn "backup checksum verification failed; cannot restore automatically"; return 1; }
-  rm -rf "$DATA_ROOT" || { warn "failed to clear $DATA_ROOT"; return 1; }
-  tar -C "$(dirname "$DATA_ROOT")" -xzf "$BACKUP_FILE" || { warn "failed to extract $BACKUP_FILE"; return 1; }
+  rm -rf "$SOURCE_DATA" || { warn "failed to clear $SOURCE_DATA"; return 1; }
+  tar -C "$(dirname "$SOURCE_DATA")" -xzf "$BACKUP_FILE" || { warn "failed to extract $BACKUP_FILE"; return 1; }
   return 0
 }
 
@@ -324,7 +361,12 @@ on_exit() {
     set +e
     warn "migration failed; attempting rollback"
     "$DOCKER" rm -f "$TMP_NAME" >/dev/null 2>&1
-    if [ "$BACKUP_READY" -eq 1 ]; then
+    if [ "$TARGET_DATA" != "$SOURCE_DATA" ] && [ "$TARGET_READY" -eq 1 ]; then
+      rm -rf "$TARGET_DATA" \
+        && log "removed incomplete target data $TARGET_DATA; old data was untouched" \
+        || warn "could not remove incomplete target data $TARGET_DATA"
+    fi
+    if [ "$TARGET_DATA" = "$SOURCE_DATA" ] && [ "$BACKUP_READY" -eq 1 ]; then
       if restore_backup; then
         log "data restored from $BACKUP_FILE"
       else
@@ -345,8 +387,8 @@ log "stopping $CONTAINER_NAME"
 "$DOCKER" stop "$CONTAINER_NAME" >/dev/null || die "failed to stop the old container"
 STOPPED=1
 
-log "backing up $DATA_ROOT"
-tar --numeric-owner -C "$(dirname "$DATA_ROOT")" -czf "$BACKUP_FILE" "$(basename "$DATA_ROOT")" \
+log "backing up $SOURCE_DATA"
+tar --numeric-owner -C "$(dirname "$SOURCE_DATA")" -czf "$BACKUP_FILE" "$(basename "$SOURCE_DATA")" \
   || die "backup failed; starting the old container again"
 chmod 600 "$BACKUP_FILE"
 sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
@@ -354,6 +396,19 @@ sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
 [ -f "$CONTAINER_JSON" ] && chmod 600 "$CONTAINER_JSON"
 BACKUP_READY=1
 log "backup written: $BACKUP_FILE"
+
+if [ "$TARGET_DATA" != "$SOURCE_DATA" ]; then
+  log "copying old data to $TARGET_DATA"
+  TARGET_READY=1
+  mkdir -p "$TARGET_DATA/config" "$TARGET_DATA/dist" "$TARGET_DATA/one" \
+    || die "failed to create target data directories"
+  cp -a "$SOURCE_DATA/config/." "$TARGET_DATA/config/" \
+    || die "failed to copy config data to the target root"
+  cp -a "$SOURCE_DATA/dist/." "$TARGET_DATA/dist/" \
+    || die "failed to copy dist data to the target root"
+  cp -a "$SOURCE_DATA/one/." "$TARGET_DATA/one/" \
+    || die "failed to copy ZeroTier data to the target root"
+fi
 
 if [ "$MIGRATE_PASSWD" -eq 1 ]; then
   log "preserving ztncui users: $OLD_PASSWD -> $NEW_PASSWD"
@@ -374,7 +429,7 @@ fi
 DEPLOY_ARGS=(
   --name "$TMP_NAME"
   --image "$IMAGE"
-  --data "$DATA_ROOT"
+  --data "$TARGET_DATA"
   --zt-port "$ZT_PORT"
   --api-port "$API_PORT"
   --file-port "$FILE_PORT"
@@ -398,6 +453,12 @@ if ! "$DOCKER" rename "$TMP_NAME" "$CONTAINER_NAME"; then
 fi
 SUCCESS=1
 
+if [ "$TARGET_DATA" = "$SOURCE_DATA" ]; then
+  ROLLBACK_HINT="restore the backup over ${SOURCE_DATA}, then start the old container."
+else
+  ROLLBACK_HINT="the old data at ${SOURCE_DATA} was never modified. Stop and remove the new container, delete ${TARGET_DATA}, then start the old container."
+fi
+
 cat <<EOF
 
 Migration complete.
@@ -405,15 +466,25 @@ Migration complete.
   UI            : https://${IP_ADDR4}:${API_PORT}
   Planet file   : https://${IP_ADDR4}:${FILE_PORT}/planet
   Moon file     : https://${IP_ADDR4}:${FILE_PORT}/<moon-id>.moon
+  New data      : $TARGET_DATA
   Backup        : $BACKUP_FILE
 
 The new UI uses a self-signed HTTPS certificate, so old http:// links no longer
 work. Download the planet with the header-based key (the old key was preserved):
 
-  curl -fsS -H "Authorization: Bearer \$(sudo cat ${DATA_ROOT}/config/file_server.key)" \\
+  curl -fsS -H "Authorization: Bearer \$(sudo cat ${TARGET_DATA}/config/file_server.key)" \\
     https://${IP_ADDR4}:${FILE_PORT}/planet -o planet
 
 EOF
+
+if [ "$TARGET_DATA" != "$SOURCE_DATA" ]; then
+  cat <<EOF
+The old data root is still intact at ${SOURCE_DATA}. After you have verified the
+new deployment, archive or remove it to avoid keeping a second copy of the
+controller identity and keys.
+
+EOF
+fi
 
 if [ "$MIGRATE_PASSWD" -eq 1 ] || [ -s "$NEW_PASSWD" ]; then
   cat <<EOF
@@ -424,7 +495,7 @@ else
   cat <<EOF
 A new random admin password was generated:
 
-  sudo cat ${DATA_ROOT}/config/admin-password
+  sudo cat ${TARGET_DATA}/config/admin-password
 
 Change it on first login. Legacy clients downloading with ?key=... must switch
 to the Authorization header; query-string keys are disabled by default.
@@ -433,8 +504,6 @@ fi
 
 cat <<EOF
 
-To roll back manually: stop and remove the new container, restore the backup
-over ${DATA_ROOT}, then start the old container. The old container definition
-was saved in:
+To roll back manually: ${ROLLBACK_HINT} The old container definition was saved in:
   $CONTAINER_JSON
 EOF

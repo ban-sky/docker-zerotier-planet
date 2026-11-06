@@ -199,7 +199,15 @@ sudo ./scripts/migrate-from-upstream.sh
 
 # 容器名或数据目录不是默认值时
 sudo ./scripts/migrate-from-upstream.sh --name myztplanet --data /path/to/data/zerotier
+
+# 旧数据在 /root，新仓库在 /opt，并希望把数据也搬到新目录
+sudo ./scripts/migrate-from-upstream.sh \
+  --data /root/docker-zerotier-planet/data/zerotier \
+  --target-data /opt/docker-zerotier-planet/data/zerotier
 ```
+
+`--target-data` 会把旧 `config`、`dist`、`one` 复制到新目录，并让新容器使用新目录；
+旧数据保持不动，确认新部署正常后再手工归档或删除。目标目录必须不存在或为空。
 
 脚本会：
 - 备份整个数据目录到 `backups/upstream-migration-<时间>.tar.gz`；

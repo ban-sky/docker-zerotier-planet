@@ -210,7 +210,17 @@ sudo ./scripts/migrate-from-upstream.sh
 
 # custom container name or data root
 sudo ./scripts/migrate-from-upstream.sh --name myztplanet --data /path/to/data/zerotier
+
+# old data under /root, new checkout under /opt, and data should move to /opt
+sudo ./scripts/migrate-from-upstream.sh \
+  --data /root/docker-zerotier-planet/data/zerotier \
+  --target-data /opt/docker-zerotier-planet/data/zerotier
 ```
+
+`--target-data` copies the old `config`, `dist` and `one` directories to the new
+root and points the new container at it. The old root is left untouched; remove
+it manually after verifying the new deployment. The target must not exist or be
+empty.
 
 The script:
 - backs up the whole data directory to `backups/upstream-migration-<time>.tar.gz`;
