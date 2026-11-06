@@ -29,13 +29,13 @@ block users_content
             each user in users
               - const userUrl = '/users/' + encodeURIComponent(user.name)
               tr
-                td
+                td(data-label='User')
                   a.row-title(href=userUrl + '/password')= user.name
-                td
+                td(data-label='Password')
                   if user.pass_set
                     span.badge.badge-ok Set
                   else
                     span.badge.badge-warn Change required
-                td.actions
+                td.actions(data-label='Actions')
                   a.btn.btn-sm.btn-ghost(href=userUrl + '/password') Set password
                   a.btn.btn-sm.btn-danger(href=userUrl + '/delete', data-confirm='Delete this admin user?') Delete

@@ -47,7 +47,7 @@
   express-validator，改用 `node:net` 实现 IP/CIDR 校验、Node 24 原生 `fetch` 调用
   controller API，并适配 1.16 的 `POST /controller/network`；生产依赖 `npm audit`
   在 2026-11-06 为 0 告警。
-- 管理界面重做为响应式卡片/表格布局，无内联脚本与样式（CSP 只允许 `'self'`），
+- 管理界面重做为响应式卡片/表格布局，手机端（≤720px）表格自动变为带字段标签的卡片、导航折叠、工具栏横向滚动、触控目标 ≥42px；无内联脚本与样式（CSP 只允许 `'self'`），
   成员授权/桥接改为显式下拉框，保持 #208 的严格布尔语义。
 - 密码文件原子写入、0600；已设置密码的账户只能由本人修改；管理员可为新建用户设置初始密码；不能删除自己或最后一个管理员。
 - `docker-compose.yml` 默认 `read_only`、`no-new-privileges`、`tmpfs /tmp`。

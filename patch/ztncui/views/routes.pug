@@ -20,9 +20,9 @@ block net_content
         tbody
           each route in networkRoutes
             tr
-              td.mono= route.target
-              td.mono= route.via || '—'
-              td.actions
+              td.mono(data-label='Target')= route.target
+              td.mono(data-label='Gateway')= route.via || '—'
+              td.actions(data-label='Actions')
                 a.btn.btn-sm.btn-danger(href=nwurl + '/routes/' + route.target + '/delete', data-confirm='Delete this managed route?') Delete
           else
             tr

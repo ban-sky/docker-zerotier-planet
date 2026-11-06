@@ -47,8 +47,8 @@ block net_content
         tbody
           each route in (network.routes || [])
             tr
-              td.mono= route.target
-              td.mono= route.via || '—'
+              td.mono(data-label='Target')= route.target
+              td.mono(data-label='Gateway')= route.via || '—'
           else
             tr
               td(colspan='2')

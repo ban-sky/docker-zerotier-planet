@@ -32,10 +32,10 @@ block content
             each network in networks
               - const nwurl = '/controller/network/' + network.nwid
               tr
-                td
+                td(data-label='Network')
                   a.row-title(href=nwurl)= network.name
-                td.mono= network.nwid
-                td.actions
+                td.mono(data-label='Network ID')= network.nwid
+                td.actions(data-label='Actions')
                   a.btn.btn-sm.btn-ghost(href=nwurl) Details
                   a.btn.btn-sm.btn-ghost(href=nwurl + '/easy') Easy setup
                   a.btn.btn-sm.btn-ghost(href=nwurl + '#members') Members

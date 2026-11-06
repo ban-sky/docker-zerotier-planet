@@ -39,4 +39,19 @@ if (failed) {
   console.error(failed + ' view(s) failed to compile');
   process.exit(1);
 }
-console.log('Compiled ' + files.length + ' views');
+
+// Mobile data tables rely on data-label attributes for the card layout.
+const labelled = ['networks.pug', 'network_detail.pug', 'routes.pug', 'ipAssignmentPools.pug', 'ipAssignments.pug', 'users.pug'];
+for (const file of labelled) {
+  const markup = fs.readFileSync(path.join(viewsDir, file), 'utf8');
+  if (!markup.includes('data-label=')) {
+    console.error('Missing data-label in ' + file);
+    process.exit(1);
+  }
+}
+const css = fs.readFileSync(path.join(root, 'public', 'stylesheets', 'app.css'), 'utf8');
+if (!css.includes('@media (max-width: 720px)') || !css.includes('attr(data-label)')) {
+  console.error('Missing mobile table rules in app.css');
+  process.exit(1);
+}
+console.log('Compiled ' + files.length + ' views; mobile data-label rules present');

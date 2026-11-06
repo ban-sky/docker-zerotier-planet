@@ -51,7 +51,7 @@ upstream project.
   controller calls use Node 24's native `fetch`, and network creation uses the
   1.16 `POST /controller/network` API. `npm audit --omit=dev` reported zero
   advisories on 2026-11-06.
-- The UI is a responsive card/table layout with no inline scripts or styles
+- The UI is a responsive card/table layout; on phones (≤720px) tables collapse into labelled cards, navigation collapses, toolbars scroll horizontally and touch targets are at least 42px. No inline scripts or styles
   (CSP allows `'self'` only). Member authorization/bridging uses explicit
   selects and keeps the strict boolean semantics from the #208 fix.
 - Atomic 0600 password writes; existing passwords can only be changed by their owner; an admin can initialize a newly created user; the last admin cannot be deleted.

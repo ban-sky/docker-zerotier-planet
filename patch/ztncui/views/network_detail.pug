@@ -40,33 +40,33 @@ block net_content
               - const online = peer && typeof peer.latency === 'number' && peer.latency !== -1
               - const memberUrl = nwurl + '/member/' + member.id
               tr
-                td
+                td(data-label='Member')
                   form.inline-form(method='POST', action=nwurl + '/members')
                     input(type='hidden', name='id', value=member.id)
                     input.input.input-sm(type='text', name='name', value=member.name, maxlength='128', aria-label='Member name for ' + member.id)
                     button.btn.btn-sm.btn-ghost(type='submit') Save
                   a.text-danger(href=memberUrl + '/delete', data-confirm='Remove this member from the network?') Remove
-                td.mono
+                td.mono(data-label='ID')
                   a(href=memberUrl)= member.id
-                td
+                td(data-label='Authorized')
                   form.inline-form(method='POST', action=nwurl + '/members')
                     input(type='hidden', name='id', value=member.id)
                     select.input.input-sm(name='auth', data-autosubmit, aria-label='Authorization for ' + member.id)
                       option(value='true', selected=member.authorized ? true : false) Authorized
                       option(value='false', selected=!member.authorized) Not authorized
-                td
+                td(data-label='Active bridge')
                   form.inline-form(method='POST', action=nwurl + '/members')
                     input(type='hidden', name='id', value=member.id)
                     select.input.input-sm(name='activeBridge', data-autosubmit, aria-label='Active bridge for ' + member.id)
                       option(value='true', selected=member.activeBridge ? true : false) Enabled
                       option(value='false', selected=!member.activeBridge) Disabled
-                td
+                td(data-label='IP assignments')
                   if member.ipAssignments.length
                     each ipAssignment in member.ipAssignments
                       a.chip(href=memberUrl + '/ipAssignments')= ipAssignment
                   else
                     a.chip.chip-muted(href=memberUrl + '/ipAssignments') Assign IP
-                td
+                td(data-label='Status')
                   if member.id == zt_address
                     span.badge.badge-ok Controller
                   else if online
