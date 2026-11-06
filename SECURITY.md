@@ -47,9 +47,12 @@ defaults.
   `*.moon`, verifies the resolved path with `realpath`, compares the key in
   constant time, and accepts the key via header by default. The legacy query
   parameter is opt-in (`ALLOW_QUERY_KEY=1`).
-- **Least privilege.** Services run as uid/gid 1000. The entrypoint starts as
-  root only to fix volume ownership and then uses `setpriv`. Compose enables
-  `read_only`, `no-new-privileges` and a `tmpfs` `/tmp`.
+- **Least privilege.** `zerotier-one` runs as root inside the container because
+  the daemon refuses to start as a non-root user. ztncui and the file server run
+  as uid/gid 1000; the entrypoint starts as root only to fix volume ownership,
+  generate TLS material and launch the daemon, then uses `setpriv` for the
+  unprivileged services. Compose enables `read_only`, `no-new-privileges` and a
+  `tmpfs` `/tmp`.
 - **No secret logging.** `set -x` is not used; the authtoken, controller token,
   session secret and download key are not printed. The initial admin password is
   written to a file instead of the log.

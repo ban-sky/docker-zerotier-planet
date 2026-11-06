@@ -38,7 +38,7 @@
 
 ### 其他加固
 
-- 容器内进程以 uid/gid 1000 运行；entrypoint 只在修正卷权限时短暂使用 root。
+- `zerotier-one` 以 root 运行（daemon 拒绝非 root 启动）；ztncui 与文件服务器以 uid/gid 1000 运行，entrypoint 仅在修正卷权限和启动 ZeroTier 时使用 root。
 - 删除 `set -x`，日志不会出现 authtoken、controller token 或下载密钥。
 - ztncui：CSP、HSTS、SameSite/HttpOnly/Secure Cookie、同源 Origin/Referer 校验、
   登录限流、开放重定向修复、原型链用户名 DoS 修复、会话固定修复、错误页不泄漏堆栈。

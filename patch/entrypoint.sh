@@ -7,7 +7,8 @@
 #  - no `set -x`: secrets must never end up in the container log
 #  - the admin password is random and written to a 0600 file (not logged)
 #  - TLS is on by default; a self-signed certificate is generated if needed
-#  - services run as the unprivileged "node" user (uid/gid 1000)
+#  - ZeroTier One runs as root (the daemon refuses non-root); ztncui and the
+#    file server run as the unprivileged "node" user (uid/gid 1000)
 #
 # GPLv3 - see LICENSE.
 set -Eeuo pipefail
@@ -174,7 +175,9 @@ fi
 # Start ZeroTier and wait for its API token
 # ---------------------------------------------------------------------------
 log "starting zerotier-one on UDP port $ZT_PORT"
-as_app /usr/sbin/zerotier-one -p"$ZT_PORT" &
+# ZeroTier refuses to start unless uid 0 ("must be run as root"). Run only this
+# process as root; ztncui and the file server still drop to APP_UID.
+/usr/sbin/zerotier-one -p"$ZT_PORT" &
 ZT_PID=$!
 
 TOKEN=""
