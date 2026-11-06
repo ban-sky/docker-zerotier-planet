@@ -6,6 +6,7 @@ services:
       args:
         ZT_VERSION: "1.16.2"
         ZT_COMMIT: "fc5c3ec22090b5b2a0f274e863651fe9ca489bf4"
+        APT_MIRROR: "${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
     container_name: zerotier-planet
     restart: unless-stopped
     read_only: true

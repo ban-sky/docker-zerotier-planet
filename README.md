@@ -231,6 +231,13 @@ sudo ./scripts/migrate-from-upstream.sh \
 构建使用固定 digest 的 Debian bookworm-slim 与 Node.js 24 LTS slim 基础镜像；
 升级基础镜像时修改 `Dockerfile` 顶部 ARG 并重新跑一遍测试。
 
+apt 默认走中科大镜像（`APT_MIRROR=http://mirrors.ustc.edu.cn`），避免国内构建卡在
+`deb.debian.org`。海外或使用其他镜像时可覆盖：
+
+```bash
+APT_MIRROR=http://deb.debian.org ./build.sh
+```
+
 ```bash
 # 本地单架构构建
 ./build.sh

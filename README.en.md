@@ -247,6 +247,14 @@ Builds use digest-pinned Debian bookworm-slim and Node.js 24 LTS slim base image
 When bumping a base image, update the ARGs at the top of `Dockerfile` and re-run
 the tests.
 
+apt defaults to the USTC Debian mirror (`APT_MIRROR=http://mirrors.ustc.edu.cn`) so
+builds in mainland China do not stall on `deb.debian.org`. Override it for other
+networks:
+
+```bash
+APT_MIRROR=http://deb.debian.org ./build.sh
+```
+
 ```bash
 # local single-architecture build
 ./build.sh

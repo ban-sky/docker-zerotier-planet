@@ -21,11 +21,20 @@ FROM ${DEBIAN_IMAGE} AS zt-builder
 ARG ZT_VERSION=1.16.2
 ARG ZT_COMMIT=fc5c3ec22090b5b2a0f274e863651fe9ca489bf4
 ARG GH_MIRROR=https://github.com
+ARG APT_MIRROR=http://mirrors.ustc.edu.cn
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential git ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+# Default to the USTC Debian mirror so apt does not stall on deb.debian.org.
+# Override with --build-arg APT_MIRROR=http://deb.debian.org (base URL only).
+RUN set -eux; \
+    mirror="${APT_MIRROR%/}"; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
+      [ -f "$f" ] || continue; \
+      sed -i -E "s#https?://(deb|security)\.debian\.org#${mirror}#g" "$f"; \
+    done; \
+    apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update; \
+    apt-get install -y --no-install-recommends build-essential git ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 RUN git clone --depth 1 --branch "${ZT_VERSION}" \
@@ -55,11 +64,18 @@ FROM ${NODE_IMAGE} AS ui-builder
 
 ARG ZTNCUI_COMMIT=1b2284864de48d2dcae22582fff122fe24909c3d
 ARG GH_MIRROR=https://github.com
+ARG APT_MIRROR=http://mirrors.ustc.edu.cn
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    mirror="${APT_MIRROR%/}"; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
+      [ -f "$f" ] || continue; \
+      sed -i -E "s#https?://(deb|security)\.debian\.org#${mirror}#g" "$f"; \
+    done; \
+    apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update; \
+    apt-get install -y --no-install-recommends git ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 RUN git init ztncui \
@@ -102,16 +118,23 @@ RUN cd /src/ztncui \
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
 
+ARG APT_MIRROR=http://mirrors.ustc.edu.cn
+
 LABEL org.opencontainers.image.title="docker-zerotier-planet" \
       org.opencontainers.image.description="Self-hosted ZeroTier planet and controller with TLS and hardened defaults" \
       org.opencontainers.image.source="https://github.com/ban-sky/docker-zerotier-planet" \
       org.opencontainers.image.licenses="GPL-3.0-only AND MPL-2.0 AND LicenseRef-ZeroTier-Source-Available"
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      ca-certificates openssl tini tzdata util-linux \
- && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    mirror="${APT_MIRROR%/}"; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
+      [ -f "$f" ] || continue; \
+      sed -i -E "s#https?://(deb|security)\.debian\.org#${mirror}#g" "$f"; \
+    done; \
+    apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update; \
+    apt-get install -y --no-install-recommends ca-certificates openssl tini tzdata util-linux; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

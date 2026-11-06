@@ -25,6 +25,7 @@ DO_UI=1
 RUN_TESTS=1
 BUILD=0
 GITHUB_TOKEN=${GITHUB_TOKEN:-}
+APT_MIRROR=${APT_MIRROR:-http://mirrors.ustc.edu.cn}
 
 usage() {
   cat <<'EOF'
@@ -44,6 +45,8 @@ Options:
 Environment:
   GITHUB_TOKEN        Optional token used for GitHub API calls (prevents
                       anonymous rate limiting).  It is never printed.
+  APT_MIRROR          Debian mirror base URL used by --build (default:
+                      http://mirrors.ustc.edu.cn).
 
 Examples:
   scripts/upgrade-upstreams.sh
@@ -277,7 +280,7 @@ if [ "$BUILD" -eq 1 ]; then
   need docker
   note ""
   note "Building image docker-zerotier-planet:upgrade-test ..."
-  if ! (cd "$ROOT_DIR" && docker build -t docker-zerotier-planet:upgrade-test .); then
+  if ! (cd "$ROOT_DIR" && docker build --build-arg "APT_MIRROR=$APT_MIRROR" -t docker-zerotier-planet:upgrade-test .); then
     restore
     die "docker build failed; Dockerfile restored"
   fi

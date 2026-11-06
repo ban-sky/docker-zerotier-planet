@@ -28,6 +28,7 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DOCKER="${DOCKER:-docker}"
 CONTAINER_NAME="${CONTAINER_NAME:-myztplanet}"
 IMAGE="${IMAGE:-docker-zerotier-planet:latest}"
+APT_MIRROR="${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
 SOURCE_DATA="${SOURCE_DATA:-}"
 TARGET_DATA="${TARGET_DATA:-}"
 BACKUP_DIR="${BACKUP_DIR:-$REPO_ROOT/backups}"
@@ -312,7 +313,7 @@ fi
 
 if [ "$BUILD_IMAGE" -eq 1 ]; then
   log "building $IMAGE from $REPO_ROOT"
-  "$DOCKER" build -t "$IMAGE" "$REPO_ROOT" || die "docker build failed; the old container was not touched"
+  "$DOCKER" build --build-arg "APT_MIRROR=$APT_MIRROR" -t "$IMAGE" "$REPO_ROOT" || die "docker build failed; the old container was not touched"
 fi
 "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1 || die "image $IMAGE not found; build it or drop --no-build"
 

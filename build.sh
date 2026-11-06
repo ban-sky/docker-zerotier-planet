@@ -14,6 +14,7 @@ ZT_VERSION="${ZT_VERSION:-1.16.2}"
 ZT_COMMIT="${ZT_COMMIT:-}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH="${PUSH:-0}"
+APT_MIRROR="${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
 
 die() { printf '[build] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[build] %s\n' "$*"; }
@@ -35,6 +36,7 @@ if [ "$PUSH" = "1" ]; then
     --platform "$PLATFORMS" \
     --build-arg "ZT_VERSION=$ZT_VERSION" \
     --build-arg "ZT_COMMIT=$ZT_COMMIT" \
+    --build-arg "APT_MIRROR=$APT_MIRROR" \
     --tag "$IMAGE" \
     --push \
     "$@" .
@@ -42,6 +44,7 @@ else
   docker buildx build \
     --build-arg "ZT_VERSION=$ZT_VERSION" \
     --build-arg "ZT_COMMIT=$ZT_COMMIT" \
+    --build-arg "APT_MIRROR=$APT_MIRROR" \
     --tag "$IMAGE" \
     --load \
     "$@" .
