@@ -186,14 +186,37 @@ docker compose restart
 
 ## 从上游版本迁移
 
-1. 停止旧容器并备份旧数据目录。
-2. 新容器只需要三个卷：`config`、`dist`、`one`（旧布局中的 `zerotier-one` 对应新 `one`）。
-3. **不要**再挂载 `/app/ztncui`；应用目录已改为不可变，挂载会阻止安全更新生效。
-4. 旧 ztncui 密码库位于 `ztncui/src/etc/passwd`，新版本默认读取
-   `config/ztncui-passwd`。可把旧文件复制过去并设置 `ZTNCUI_PASSWD`，或直接删除
-   `config/ztncui-passwd` 与 `config/admin-password` 让容器重新生成管理员。
-5. 若保留旧 `one/`，entrypoint 会复用 `identity.secret` 并重新生成 planet，
-   客户端 planet 的 ID 不变。
+如果当前运行的是 `xubiaolin/docker-zerotier-planet`，可以直接用迁移脚本升级到本分支。
+脚本会保留 ZeroTier 身份、controller 数据库、authtoken、planet/moon 与 ztncui 账户，
+并在新容器健康后才会删除旧容器；失败会自动恢复备份并重新启动旧容器。
+
+```bash
+# 先查看计划，不做任何修改
+sudo ./scripts/migrate-from-upstream.sh --dry-run
+
+# 正式迁移（默认容器名 myztplanet，自动从容器挂载推断数据目录）
+sudo ./scripts/migrate-from-upstream.sh
+
+# 容器名或数据目录不是默认值时
+sudo ./scripts/migrate-from-upstream.sh --name myztplanet --data /path/to/data/zerotier
+```
+
+脚本会：
+- 备份整个数据目录到 `backups/upstream-migration-<时间>.tar.gz`；
+- 复用旧 `one/`（identity、controller.d、moons.d、authtoken.secret）；
+- 把旧 `ztncui/src/etc/passwd` 复制为 `config/ztncui-passwd`，保留管理员；
+- 迁移 ztncui 的成员显示名（`node-persist` storage）；
+- 用当前分支构建镜像，启动临时容器，健康检查通过后替换旧容器；
+- 保留旧 `config/file_server.key`（若长度足够），并重新生成 planet。
+
+迁移后注意：
+- 新 UI 默认使用 HTTPS 自签证书，旧 `http://` 地址不再可用；
+- 文件下载改为 Header 认证，旧 `?key=` 默认被禁用；
+- planet ID 不变，但 planet 内容会重建；若公网 IP 未变，客户端重新下载 planet 即可；
+- 旧容器定义保存在 `backups/*-container.json`，备份可用于手工回滚。
+
+新部署仍只需要三个卷：`config`、`dist`、`one`。旧布局里的 `ztncui` 目录不再挂载；
+挂载 `/app/ztncui` 会覆盖不可变应用目录，阻止安全更新生效。
 
 ## 本地构建与测试
 

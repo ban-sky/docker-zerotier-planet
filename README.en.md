@@ -195,17 +195,41 @@ lost, every client must switch to a new planet. Back up `data/one/` and
 
 ## Migrating from upstream
 
-1. Stop the old container and back up its data directory.
-2. The new container needs three volumes: `config`, `dist` and `one` (the old
-   `zerotier-one` directory maps to the new `one`).
-3. **Do not** mount `/app/ztncui` any more; the application directory is now
-   immutable, and mounting over it would prevent security updates.
-4. The old ztncui password database lives in `ztncui/src/etc/passwd`; the new
-   image reads `config/ztncui-passwd`. Copy the old file there and set
-   `ZTNCUI_PASSWD`, or delete both `config/ztncui-passwd` and
-   `config/admin-password` to let the container recreate the admin.
-5. With an existing `one/`, the entrypoint reuses `identity.secret` and
-   regenerates the planet; the planet ID stays the same.
+If you are running `xubiaolin/docker-zerotier-planet`, the migration script upgrades
+the existing deployment in place. It preserves the ZeroTier identity, controller
+database, authtoken, planet/moon files and ztncui accounts. The old container is
+removed only after the new one is healthy; a failed start restores the backup and
+restarts the old container.
+
+```bash
+# inspect the plan first (no changes)
+sudo ./scripts/migrate-from-upstream.sh --dry-run
+
+# migrate (default container: myztplanet; data root is derived from its mounts)
+sudo ./scripts/migrate-from-upstream.sh
+
+# custom container name or data root
+sudo ./scripts/migrate-from-upstream.sh --name myztplanet --data /path/to/data/zerotier
+```
+
+The script:
+- backs up the whole data directory to `backups/upstream-migration-<time>.tar.gz`;
+- reuses the old `one/` (identity, controller.d, moons.d, authtoken.secret);
+- copies the old `ztncui/src/etc/passwd` to `config/ztncui-passwd`;
+- migrates ztncui member display names (node-persist storage);
+- builds the image from the current branch, starts a temporary container and swaps
+  it into place after the health check;
+- keeps the old `config/file_server.key` when it is long enough, and rebuilds planet.
+
+After migration:
+- the UI is HTTPS with a self-signed certificate; old `http://` links stop working;
+- planet downloads use header authentication; legacy `?key=` is disabled by default;
+- the planet ID is unchanged, but the file is rebuilt; clients should download it again;
+- the old container definition is saved as `backups/*-container.json` for manual rollback.
+
+The new deployment still needs only three volumes: `config`, `dist` and `one`.
+The old `ztncui` directory is no longer mounted; mounting over `/app/ztncui` would
+hide the immutable application and prevent security updates.
 
 ## Local build and tests
 
