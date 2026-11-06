@@ -20,6 +20,10 @@ FROM ${DEBIAN_IMAGE} AS zt-builder
 
 ARG ZT_VERSION=1.16.2
 ARG ZT_COMMIT=fc5c3ec22090b5b2a0f274e863651fe9ca489bf4
+# Parallel compile jobs. The default is deliberately 1: each cc1plus process
+# can use several hundred MB, and many small VPS instances OOM with -j$(nproc).
+# Set BUILD_JOBS=2/4 on a machine with enough RAM.
+ARG BUILD_JOBS=1
 # Mainland-China friendly GitHub proxy, with direct GitHub as a fallback.
 # Override GH_MIRROR=https://github.com outside China or to use another mirror.
 ARG GH_MIRROR=https://ghfast.top/https://github.com
@@ -68,7 +72,7 @@ RUN set -eux; \
 COPY patch/mkworld_custom.cpp /src/mkworld_custom.cpp
 
 RUN cd zerotier \
- && make -j"$(nproc)" ZT_NONFREE=1 ZT_SSO_SUPPORTED=0 \
+ && make -j"${BUILD_JOBS}" ZT_NONFREE=1 ZT_SSO_SUPPORTED=0 \
  && mkdir -p /out/usr/sbin /out/licenses \
  && cp zerotier-one /out/usr/sbin/ \
  && strip --strip-unneeded /out/usr/sbin/zerotier-one \
@@ -85,6 +89,11 @@ RUN cd zerotier \
 # ztncui (pinned commit, hardened overlay, WASM Argon2)
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS ui-builder
+
+# Build the two stages sequentially on small hosts. BuildKit otherwise runs the
+# apt/npm stage alongside the C++ compile, roughly doubling peak memory. This
+# copy is only a dependency barrier; the tiny license file is harmless.
+COPY --from=zt-builder /out/licenses/LICENSE.txt /tmp/zerotier-builder-ready.txt
 
 ARG ZTNCUI_COMMIT=1b2284864de48d2dcae22582fff122fe24909c3d
 ARG GH_MIRROR=https://ghfast.top/https://github.com

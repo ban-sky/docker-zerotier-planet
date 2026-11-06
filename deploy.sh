@@ -19,6 +19,7 @@ DOCKER="${DOCKER:-docker}"
 APT_MIRROR="${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
 GH_MIRROR="${GH_MIRROR:-https://ghfast.top/https://github.com}"
 GH_FALLBACK="${GH_FALLBACK:-https://github.com}"
+BUILD_JOBS="${BUILD_JOBS:-1}"
 ZT_PORT="${ZT_PORT:-9994}"
 API_PORT="${API_PORT:-3443}"
 FILE_PORT="${FILE_PORT:-3000}"
@@ -88,6 +89,9 @@ for spec in "ZT_PORT:$ZT_PORT" "API_PORT:$API_PORT" "FILE_PORT:$FILE_PORT"; do
   valid_port "$value" || die "$name must be between 1 and 65535"
 done
 
+case "$BUILD_JOBS" in ''|*[!0-9]*) die "BUILD_JOBS must be a positive integer" ;; esac
+[ "$BUILD_JOBS" -ge 1 ] || die "BUILD_JOBS must be at least 1"
+
 command -v "$DOCKER" >/dev/null 2>&1 || die "$DOCKER is not installed or not in PATH"
 
 if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
@@ -97,6 +101,7 @@ if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
     --build-arg "APT_MIRROR=$APT_MIRROR" \
     --build-arg "GH_MIRROR=$GH_MIRROR" \
     --build-arg "GH_FALLBACK=$GH_FALLBACK" \
+    --build-arg "BUILD_JOBS=$BUILD_JOBS" \
     -t "$IMAGE" .
 fi
 

@@ -31,6 +31,7 @@ IMAGE="${IMAGE:-docker-zerotier-planet:latest}"
 APT_MIRROR="${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
 GH_MIRROR="${GH_MIRROR:-https://ghfast.top/https://github.com}"
 GH_FALLBACK="${GH_FALLBACK:-https://github.com}"
+BUILD_JOBS="${BUILD_JOBS:-1}"
 SOURCE_DATA="${SOURCE_DATA:-}"
 TARGET_DATA="${TARGET_DATA:-}"
 BACKUP_DIR="${BACKUP_DIR:-$REPO_ROOT/backups}"
@@ -116,6 +117,9 @@ valid_port() {
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
+
+case "$BUILD_JOBS" in ''|*[!0-9]*) die "BUILD_JOBS must be a positive integer" ;; esac
+[ "$BUILD_JOBS" -ge 1 ] || die "BUILD_JOBS must be at least 1"
 
 need_cmd "$DOCKER"
 need_cmd tar
@@ -319,6 +323,7 @@ if [ "$BUILD_IMAGE" -eq 1 ]; then
     --build-arg "APT_MIRROR=$APT_MIRROR" \
     --build-arg "GH_MIRROR=$GH_MIRROR" \
     --build-arg "GH_FALLBACK=$GH_FALLBACK" \
+    --build-arg "BUILD_JOBS=$BUILD_JOBS" \
     -t "$IMAGE" "$REPO_ROOT" || die "docker build failed; the old container was not touched"
 fi
 "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1 || die "image $IMAGE not found; build it or drop --no-build"

@@ -269,6 +269,23 @@ ZeroTier `1.16.2` has both a branch and an annotated tag with the same name. The
 build fetches the tag explicitly and verifies the commit, so it never checks out
 the branch tip by accident.
 
+The build defaults to `BUILD_JOBS=1`, and ui-builder waits for zt-builder before
+starting so small VPS instances do not run apt/npm and the C++ compile at the
+same time. Add 2–4 GiB of swap when RAM is below 2 GiB; raise the job count only
+when there is enough memory:
+
+```bash
+# default: one compile job, lowest memory
+./build.sh
+
+# more memory available
+BUILD_JOBS=2 ./build.sh
+```
+
+A multi-arch build (`PUSH=1`) compiles once per platform (amd64 and arm64), so peak
+memory is roughly twice that of a single-arch build. On a small host, build only
+the native architecture, or build each platform on a separate machine.
+
 ```bash
 # local single-architecture build
 ./build.sh

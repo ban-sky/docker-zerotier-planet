@@ -9,6 +9,7 @@ services:
         APT_MIRROR: "${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
         GH_MIRROR: "${GH_MIRROR:-https://ghfast.top/https://github.com}"
         GH_FALLBACK: "${GH_FALLBACK:-https://github.com}"
+        BUILD_JOBS: "${BUILD_JOBS:-1}"
     container_name: zerotier-planet
     restart: unless-stopped
     read_only: true

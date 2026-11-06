@@ -15,6 +15,7 @@ ZT_COMMIT="${ZT_COMMIT:-}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH="${PUSH:-0}"
 APT_MIRROR="${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
+BUILD_JOBS="${BUILD_JOBS:-1}"
 GH_MIRROR="${GH_MIRROR:-https://ghfast.top/https://github.com}"
 GH_FALLBACK="${GH_FALLBACK:-https://github.com}"
 
@@ -28,10 +29,13 @@ if [ -z "$ZT_COMMIT" ]; then
   esac
 fi
 
+case "$BUILD_JOBS" in ''|*[!0-9]*) die "BUILD_JOBS must be a positive integer" ;; esac
+[ "$BUILD_JOBS" -ge 1 ] || die "BUILD_JOBS must be at least 1"
+
 command -v docker >/dev/null 2>&1 || die "docker is not installed"
 docker buildx version >/dev/null 2>&1 || die "docker buildx is required"
 
-log "building $IMAGE (ZeroTier $ZT_VERSION / $ZT_COMMIT; GitHub $GH_MIRROR)"
+log "building $IMAGE (ZeroTier $ZT_VERSION / $ZT_COMMIT; jobs $BUILD_JOBS; GitHub $GH_MIRROR)"
 
 if [ "$PUSH" = "1" ]; then
   docker buildx build \
@@ -41,6 +45,7 @@ if [ "$PUSH" = "1" ]; then
     --build-arg "APT_MIRROR=$APT_MIRROR" \
     --build-arg "GH_MIRROR=$GH_MIRROR" \
     --build-arg "GH_FALLBACK=$GH_FALLBACK" \
+    --build-arg "BUILD_JOBS=$BUILD_JOBS" \
     --tag "$IMAGE" \
     --push \
     "$@" .
@@ -51,6 +56,7 @@ else
     --build-arg "APT_MIRROR=$APT_MIRROR" \
     --build-arg "GH_MIRROR=$GH_MIRROR" \
     --build-arg "GH_FALLBACK=$GH_FALLBACK" \
+    --build-arg "BUILD_JOBS=$BUILD_JOBS" \
     --tag "$IMAGE" \
     --load \
     "$@" .

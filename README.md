@@ -251,6 +251,21 @@ GH_MIRROR=https://gh-proxy.com/https://github.com ./build.sh
 ZeroTier 的 `1.16.2` 同时存在同名 branch 与 annotated tag。构建脚本显式 fetch
 tag 并校验 commit，避免误检出 branch tip。
 
+构建默认 `BUILD_JOBS=1`，且 ui-builder 会等 zt-builder 完成后再开始，避免小内存
+VPS 在两个 stage 同时跑 apt/npm 和 C++ 编译。内存小于 2 GiB 时建议先加 2–4 GiB
+swap；内存 ≥4 GiB 可适当提高并发：
+
+```bash
+# 默认单线程编译，最省内存
+./build.sh
+
+# 内存充足时提高编译并发
+BUILD_JOBS=2 ./build.sh
+```
+
+多架构构建（`PUSH=1`）会为 amd64 和 arm64 各跑一次编译，峰值内存约为单架构的两倍；
+内存紧张时只构建当前架构，或在不同机器上分别构建。
+
 ```bash
 # 本地单架构构建
 ./build.sh

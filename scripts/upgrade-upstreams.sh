@@ -28,6 +28,7 @@ GITHUB_TOKEN=${GITHUB_TOKEN:-}
 APT_MIRROR=${APT_MIRROR:-http://mirrors.ustc.edu.cn}
 GH_MIRROR=${GH_MIRROR:-https://ghfast.top/https://github.com}
 GH_FALLBACK=${GH_FALLBACK:-https://github.com}
+BUILD_JOBS=${BUILD_JOBS:-1}
 
 usage() {
   cat <<'EOF'
@@ -286,10 +287,13 @@ if [ "$BUILD" -eq 1 ]; then
   need docker
   note ""
   note "Building image docker-zerotier-planet:upgrade-test ..."
+  case "$BUILD_JOBS" in ''|*[!0-9]*) die "BUILD_JOBS must be a positive integer" ;; esac
+  [ "$BUILD_JOBS" -ge 1 ] || die "BUILD_JOBS must be at least 1"
   if ! (cd "$ROOT_DIR" && docker build \
       --build-arg "APT_MIRROR=$APT_MIRROR" \
       --build-arg "GH_MIRROR=$GH_MIRROR" \
       --build-arg "GH_FALLBACK=$GH_FALLBACK" \
+      --build-arg "BUILD_JOBS=$BUILD_JOBS" \
       -t docker-zerotier-planet:upgrade-test .); then
     restore
     die "docker build failed; Dockerfile restored"
