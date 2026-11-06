@@ -26,6 +26,8 @@ RUN_TESTS=1
 BUILD=0
 GITHUB_TOKEN=${GITHUB_TOKEN:-}
 APT_MIRROR=${APT_MIRROR:-http://mirrors.ustc.edu.cn}
+GH_MIRROR=${GH_MIRROR:-https://ghfast.top/https://github.com}
+GH_FALLBACK=${GH_FALLBACK:-https://github.com}
 
 usage() {
   cat <<'EOF'
@@ -47,6 +49,10 @@ Environment:
                       anonymous rate limiting).  It is never printed.
   APT_MIRROR          Debian mirror base URL used by --build (default:
                       http://mirrors.ustc.edu.cn).
+  GH_MIRROR           GitHub proxy base used by --build (default:
+                      https://ghfast.top/https://github.com).
+  GH_FALLBACK         Direct GitHub fallback used by --build (default:
+                      https://github.com).
 
 Examples:
   scripts/upgrade-upstreams.sh
@@ -280,7 +286,11 @@ if [ "$BUILD" -eq 1 ]; then
   need docker
   note ""
   note "Building image docker-zerotier-planet:upgrade-test ..."
-  if ! (cd "$ROOT_DIR" && docker build --build-arg "APT_MIRROR=$APT_MIRROR" -t docker-zerotier-planet:upgrade-test .); then
+  if ! (cd "$ROOT_DIR" && docker build \
+      --build-arg "APT_MIRROR=$APT_MIRROR" \
+      --build-arg "GH_MIRROR=$GH_MIRROR" \
+      --build-arg "GH_FALLBACK=$GH_FALLBACK" \
+      -t docker-zerotier-planet:upgrade-test .); then
     restore
     die "docker build failed; Dockerfile restored"
   fi

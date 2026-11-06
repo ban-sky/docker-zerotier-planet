@@ -255,6 +255,20 @@ networks:
 APT_MIRROR=http://deb.debian.org ./build.sh
 ```
 
+Git clones go through `https://ghfast.top/https://github.com` by default and fall
+back to `https://github.com`. The proxy is only a transport; ZeroTier and ztncui
+are still verified against pinned commits. Outside China, or to use another proxy:
+
+```bash
+GH_MIRROR=https://github.com ./build.sh
+# or
+GH_MIRROR=https://gh-proxy.com/https://github.com ./build.sh
+```
+
+ZeroTier `1.16.2` has both a branch and an annotated tag with the same name. The
+build fetches the tag explicitly and verifies the commit, so it never checks out
+the branch tip by accident.
+
 ```bash
 # local single-architecture build
 ./build.sh

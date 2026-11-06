@@ -17,6 +17,8 @@ IMAGE="${IMAGE:-docker-zerotier-planet:latest}"
 DATA_ROOT="${DATA_ROOT:-$(pwd)/data/zerotier}"
 DOCKER="${DOCKER:-docker}"
 APT_MIRROR="${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
+GH_MIRROR="${GH_MIRROR:-https://ghfast.top/https://github.com}"
+GH_FALLBACK="${GH_FALLBACK:-https://github.com}"
 ZT_PORT="${ZT_PORT:-9994}"
 API_PORT="${API_PORT:-3443}"
 FILE_PORT="${FILE_PORT:-3000}"
@@ -91,7 +93,11 @@ command -v "$DOCKER" >/dev/null 2>&1 || die "$DOCKER is not installed or not in 
 if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
   [ -f Dockerfile ] || die "image $IMAGE not found; build it first or set IMAGE"
   log "image $IMAGE not found; building it from ./Dockerfile"
-  "$DOCKER" build --build-arg "APT_MIRROR=$APT_MIRROR" -t "$IMAGE" .
+  "$DOCKER" build \
+    --build-arg "APT_MIRROR=$APT_MIRROR" \
+    --build-arg "GH_MIRROR=$GH_MIRROR" \
+    --build-arg "GH_FALLBACK=$GH_FALLBACK" \
+    -t "$IMAGE" .
 fi
 
 IP_ADDR4=$(prompt "Public IPv4 address or hostname" "$IP_ADDR4")

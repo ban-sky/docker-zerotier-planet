@@ -7,6 +7,8 @@ services:
         ZT_VERSION: "1.16.2"
         ZT_COMMIT: "fc5c3ec22090b5b2a0f274e863651fe9ca489bf4"
         APT_MIRROR: "${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
+        GH_MIRROR: "${GH_MIRROR:-https://ghfast.top/https://github.com}"
+        GH_FALLBACK: "${GH_FALLBACK:-https://github.com}"
     container_name: zerotier-planet
     restart: unless-stopped
     read_only: true

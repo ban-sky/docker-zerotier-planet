@@ -238,6 +238,19 @@ apt 默认走中科大镜像（`APT_MIRROR=http://mirrors.ustc.edu.cn`），避�
 APT_MIRROR=http://deb.debian.org ./build.sh
 ```
 
+Git clone 默认经 `https://ghfast.top/https://github.com` 代理，失败会自动回退到
+`https://github.com`。镜像只是传输通道，ZeroTier 与 ztncui 仍按固定 SHA 校验；
+不要使用无法访问 GitHub 且不提供 fallback 的代理。海外或改用其他代理：
+
+```bash
+GH_MIRROR=https://github.com ./build.sh
+# 或
+GH_MIRROR=https://gh-proxy.com/https://github.com ./build.sh
+```
+
+ZeroTier 的 `1.16.2` 同时存在同名 branch 与 annotated tag。构建脚本显式 fetch
+tag 并校验 commit，避免误检出 branch tip。
+
 ```bash
 # 本地单架构构建
 ./build.sh

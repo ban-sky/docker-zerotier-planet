@@ -15,6 +15,8 @@ ZT_COMMIT="${ZT_COMMIT:-}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH="${PUSH:-0}"
 APT_MIRROR="${APT_MIRROR:-http://mirrors.ustc.edu.cn}"
+GH_MIRROR="${GH_MIRROR:-https://ghfast.top/https://github.com}"
+GH_FALLBACK="${GH_FALLBACK:-https://github.com}"
 
 die() { printf '[build] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[build] %s\n' "$*"; }
@@ -29,7 +31,7 @@ fi
 command -v docker >/dev/null 2>&1 || die "docker is not installed"
 docker buildx version >/dev/null 2>&1 || die "docker buildx is required"
 
-log "building $IMAGE (ZeroTier $ZT_VERSION / $ZT_COMMIT)"
+log "building $IMAGE (ZeroTier $ZT_VERSION / $ZT_COMMIT; GitHub $GH_MIRROR)"
 
 if [ "$PUSH" = "1" ]; then
   docker buildx build \
@@ -37,6 +39,8 @@ if [ "$PUSH" = "1" ]; then
     --build-arg "ZT_VERSION=$ZT_VERSION" \
     --build-arg "ZT_COMMIT=$ZT_COMMIT" \
     --build-arg "APT_MIRROR=$APT_MIRROR" \
+    --build-arg "GH_MIRROR=$GH_MIRROR" \
+    --build-arg "GH_FALLBACK=$GH_FALLBACK" \
     --tag "$IMAGE" \
     --push \
     "$@" .
@@ -45,6 +49,8 @@ else
     --build-arg "ZT_VERSION=$ZT_VERSION" \
     --build-arg "ZT_COMMIT=$ZT_COMMIT" \
     --build-arg "APT_MIRROR=$APT_MIRROR" \
+    --build-arg "GH_MIRROR=$GH_MIRROR" \
+    --build-arg "GH_FALLBACK=$GH_FALLBACK" \
     --tag "$IMAGE" \
     --load \
     "$@" .

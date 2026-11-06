@@ -20,7 +20,10 @@ FROM ${DEBIAN_IMAGE} AS zt-builder
 
 ARG ZT_VERSION=1.16.2
 ARG ZT_COMMIT=fc5c3ec22090b5b2a0f274e863651fe9ca489bf4
-ARG GH_MIRROR=https://github.com
+# Mainland-China friendly GitHub proxy, with direct GitHub as a fallback.
+# Override GH_MIRROR=https://github.com outside China or to use another mirror.
+ARG GH_MIRROR=https://ghfast.top/https://github.com
+ARG GH_FALLBACK=https://github.com
 ARG APT_MIRROR=http://mirrors.ustc.edu.cn
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -37,9 +40,30 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-RUN git clone --depth 1 --branch "${ZT_VERSION}" \
-      "${GH_MIRROR}/zerotier/ZeroTierOne.git" zerotier \
- && test "$(git -C zerotier rev-parse HEAD)" = "${ZT_COMMIT}"
+# Fetch the annotated tag explicitly: a branch named "1.16.2" also exists, and
+# `git clone --branch 1.16.2` would check out that branch tip instead of the
+# released tag. Try the mirror first, then direct GitHub, and verify the exact
+# peeled commit every time.
+RUN set -eux; \
+    ok=0; \
+    for base in "${GH_MIRROR}" "${GH_FALLBACK}"; do \
+      [ -n "$base" ] || continue; \
+      base="${base%/}"; \
+      rm -rf /src/zerotier; \
+      mkdir -p /src/zerotier; \
+      cd /src/zerotier; \
+      git init -q; \
+      git remote add origin "${base}/zerotier/ZeroTierOne.git"; \
+      if timeout 300 git fetch --depth 1 origin "refs/tags/${ZT_VERSION}" \
+         && git checkout -q --detach 'FETCH_HEAD^{commit}' \
+         && [ "$(git rev-parse HEAD)" = "${ZT_COMMIT}" ]; then \
+        ok=1; \
+        break; \
+      fi; \
+      cd /src; \
+    done; \
+    [ "$ok" = 1 ]; \
+    test "$(git -C /src/zerotier rev-parse HEAD)" = "${ZT_COMMIT}"
 
 COPY patch/mkworld_custom.cpp /src/mkworld_custom.cpp
 
@@ -63,7 +87,8 @@ RUN cd zerotier \
 FROM ${NODE_IMAGE} AS ui-builder
 
 ARG ZTNCUI_COMMIT=1b2284864de48d2dcae22582fff122fe24909c3d
-ARG GH_MIRROR=https://github.com
+ARG GH_MIRROR=https://ghfast.top/https://github.com
+ARG GH_FALLBACK=https://github.com
 ARG APT_MIRROR=http://mirrors.ustc.edu.cn
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -78,12 +103,26 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-RUN git init ztncui \
- && cd ztncui \
- && git remote add origin "${GH_MIRROR}/key-networks/ztncui.git" \
- && git fetch --depth 1 origin "${ZTNCUI_COMMIT}" \
- && git checkout --detach FETCH_HEAD \
- && test "$(git rev-parse HEAD)" = "${ZTNCUI_COMMIT}"
+RUN set -eux; \
+    ok=0; \
+    for base in "${GH_MIRROR}" "${GH_FALLBACK}"; do \
+      [ -n "$base" ] || continue; \
+      base="${base%/}"; \
+      rm -rf /src/ztncui; \
+      mkdir -p /src/ztncui; \
+      cd /src/ztncui; \
+      git init -q; \
+      git remote add origin "${base}/key-networks/ztncui.git"; \
+      if timeout 300 git fetch --depth 1 origin "${ZTNCUI_COMMIT}" \
+         && git checkout -q --detach FETCH_HEAD \
+         && [ "$(git rev-parse HEAD)" = "${ZTNCUI_COMMIT}" ]; then \
+        ok=1; \
+        break; \
+      fi; \
+      cd /src; \
+    done; \
+    [ "$ok" = 1 ]; \
+    test "$(git -C /src/ztncui rev-parse HEAD)" = "${ZTNCUI_COMMIT}"
 
 WORKDIR /src/ztncui/src
 
