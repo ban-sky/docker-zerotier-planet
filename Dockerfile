@@ -197,12 +197,13 @@ COPY LICENSE /usr/share/licenses/docker-zerotier-planet/LICENSE
 COPY NOTICE /usr/share/licenses/docker-zerotier-planet/NOTICE
 
 # The CLI lives in /usr/sbin; these links match what `make install` creates and
-# let users run `docker exec ... zerotier-cli` (#196).
-RUN ln -sf ../../../usr/sbin/zerotier-one /var/lib/zerotier-one/zerotier-one \
+# let users run `docker exec ... zerotier-cli` (#196). Create the data directory
+# first: `ln -sf` does not create missing parent directories.
+RUN mkdir -p /app/config /app/dist /var/lib/zerotier-one/moons.d \
+ && ln -sf ../../../usr/sbin/zerotier-one /var/lib/zerotier-one/zerotier-one \
  && ln -sf ../../../usr/sbin/zerotier-one /var/lib/zerotier-one/zerotier-cli \
  && ln -sf ../../../usr/sbin/zerotier-one /var/lib/zerotier-one/zerotier-idtool \
  && chmod 755 /app/entrypoint.sh /app/http_server.js /app/configure-moon.js /app/mkworld \
- && mkdir -p /app/config /app/dist /var/lib/zerotier-one/moons.d \
  && chown -R node:node /app/config /app/dist /var/lib/zerotier-one
 
 EXPOSE 9994/udp 3443/tcp 3000/tcp
