@@ -179,7 +179,7 @@ done
 
 if [ "$STATUS" != "healthy" ]; then
   printf '[deploy] container did not report healthy (status: %s)\n' "$STATUS" >&2
-  "$DOCKER" logs --tail 50 "$CONTAINER_NAME" >&2 || true
+  "$DOCKER" logs --tail 200 "$CONTAINER_NAME" >&2 || true
   die "startup failed; inspect the logs with: $DOCKER logs $CONTAINER_NAME"
 fi
 
