@@ -380,6 +380,12 @@ on_exit() {
   if [ "$rc" -ne 0 ] && [ "$STOPPED" -eq 1 ] && [ "$SUCCESS" -eq 0 ] && [ "$OLD_REMOVED" -eq 0 ]; then
     set +e
     warn "migration failed; attempting rollback"
+    if [ -n "$TMP_NAME" ] && "$DOCKER" inspect "$TMP_NAME" >/dev/null 2>&1; then
+      FAILED_LOG="$BACKUP_DIR/upstream-migration-$STAMP-failed.log"
+      "$DOCKER" logs --tail 200 "$TMP_NAME" > "$FAILED_LOG" 2>&1 || true
+      chmod 600 "$FAILED_LOG" 2>/dev/null || true
+      warn "new container logs saved to $FAILED_LOG"
+    fi
     "$DOCKER" rm -f "$TMP_NAME" >/dev/null 2>&1
     if [ "$TARGET_DATA" != "$SOURCE_DATA" ] && [ "$TARGET_READY" -eq 1 ]; then
       rm -rf "$TARGET_DATA" \
